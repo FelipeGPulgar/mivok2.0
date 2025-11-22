@@ -90,7 +90,7 @@ export default function ChatsClienteScreen() {
   };
 
   const handleBackPress = () => {
-    router.back();
+    router.push('/home-cliente');
   };
 
   const formatTime = (timestamp: string) => {

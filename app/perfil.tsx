@@ -337,11 +337,11 @@ export default function PerfilScreen() {
       {/* Bottom Navigation */}
       <BottomNavBar 
         activeTab={isDJ ? 'apartadomasdj' : 'apartadomascliente'}
-        onHomePress={() => router.back()}
-        onEventosPress={() => {}}
-        onSearchPress={() => {}}
-        onAlertasPress={() => {}}
-        onMasPress={() => {}}
+        onHomePress={() => router.push(isDJ ? '/home-dj' : '/home-cliente')}
+        onEventosPress={() => router.push(isDJ ? '/eventos-dj' : '/eventos-cliente' as any)}
+        onSearchPress={() => router.push(isDJ ? '/chats-dj' : '/chats-cliente')}
+        onAlertasPress={() => router.push(isDJ ? '/alertas-dj' : '/alertas-cliente')}
+        onMasPress={() => router.push(isDJ ? '/apartadodj' : '/apartadomascliente')}
       />
     </SafeAreaView>
   );

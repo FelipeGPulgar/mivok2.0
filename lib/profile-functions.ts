@@ -4,6 +4,33 @@
 import { safeGetUser, supabase } from './supabase';
 
 // ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Verifica si un error es un AuthSessionMissingError esperado
+ * y solo loguea si no lo es
+ */
+const handleAuthError = (authError: any): boolean => {
+  if (!authError) return false;
+  
+  // Verificar si es un AuthSessionMissingError esperado
+  const isSessionMissing = 
+    authError?.name === 'AuthSessionMissingError' ||
+    authError?.message?.includes('Auth session missing') ||
+    authError?.message?.includes('Session missing');
+  
+  if (isSessionMissing) {
+    // No loguear errores de sesión faltante - es esperado cuando no hay sesión
+    return true;
+  }
+  
+  // Loguear otros errores de autenticación
+  console.error('❌ Error obteniendo usuario autenticado:', authError);
+  return false;
+};
+
+// ============================================================================
 // INTERFACES
 // ============================================================================
 
@@ -32,7 +59,7 @@ export const getCurrentProfile = async (): Promise<UserProfile | null> => {
     const { data: { user }, error: authError } = await safeGetUser();
 
     if (authError || !user) {
-      console.error('❌ Error obteniendo usuario autenticado:', authError);
+      handleAuthError(authError);
       return null;
     }
 
@@ -91,7 +118,7 @@ export const updateProfile = async (
     const { data: { user }, error: authError } = await safeGetUser();
 
     if (authError || !user) {
-      console.error('❌ Error obteniendo usuario autenticado:', authError);
+      handleAuthError(authError);
       return null;
     }
 
@@ -282,7 +309,7 @@ export const updateProfileImageUrl = async (imageUrl: string): Promise<boolean> 
     const { data: { user }, error: authError } = await safeGetUser();
 
     if (authError || !user) {
-      console.error('❌ Error obteniendo usuario autenticado:', authError);
+      handleAuthError(authError);
       return false;
     }
 
@@ -379,7 +406,7 @@ export const getCurrentDJProfile = async () => {
     const { data: { user }, error: authError } = await safeGetUser();
 
     if (authError || !user) {
-      console.error('❌ Error obteniendo usuario autenticado:', authError);
+      handleAuthError(authError);
       return null;
     }
 
@@ -409,7 +436,7 @@ export const updateDJProfile = async (updates: any): Promise<boolean> => {
     const { data: { user }, error: authError } = await safeGetUser();
 
     if (authError || !user) {
-      console.error('❌ Error obteniendo usuario autenticado:', authError);
+      handleAuthError(authError);
       return false;
     }
 

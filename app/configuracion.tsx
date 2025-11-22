@@ -1,19 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TouchableOpacity,
-    View
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BottomNavBar from '../components/BottomNavBar';
 import { useColorScheme } from '../hooks/useColorScheme';
+import * as profileFunctions from '../lib/profile-functions';
+import { useRole } from '../lib/RoleContext';
 
 interface SwitchSettingItem {
   icon: string;
@@ -41,10 +43,43 @@ interface SettingsSection {
 
 export default function ConfiguracionScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const { isDJ, isLoading } = useRole();
+  const [hasDJProfile, setHasDJProfile] = useState<boolean | null>(null);
+
+  const isDJMode = params.mode === 'dj' || (isDJ && params.mode !== 'client');
+  
+  // Debug: Verificar valores
+  console.log('🔧 Configuración - isDJ:', isDJ, 'isDJMode:', isDJMode, 'params.mode:', params.mode, 'hasDJProfile:', hasDJProfile);
+  
   const systemColorScheme = useColorScheme();
   const [isDarkMode, setIsDarkMode] = useState(systemColorScheme === 'dark');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [locationEnabled, setLocationEnabled] = useState(false);
+
+  // Verificar directamente si el usuario tiene perfil DJ
+  // Ejecutar siempre al montar y cuando cambie isDJ del contexto
+  useEffect(() => {
+    const checkDJProfile = async () => {
+      try {
+        console.log('🔍 Iniciando verificación de perfil DJ...');
+        const djProfile = await profileFunctions.getCurrentDJProfile();
+        const userIsDJ = !!djProfile;
+        console.log('🔍 Resultado verificación DJ:', {
+          userIsDJ,
+          hasProfile: !!djProfile,
+          profileId: djProfile?.id || 'N/A'
+        });
+        setHasDJProfile(userIsDJ);
+      } catch (error) {
+        console.error('❌ Error verificando perfil DJ:', error);
+        setHasDJProfile(false);
+      }
+    };
+    
+    // Siempre verificar directamente, no confiar solo en el contexto
+    checkDJProfile();
+  }, [isDJ]); // Re-ejecutar si isDJ cambia
 
   useEffect(() => {
     loadSettings();
@@ -125,19 +160,7 @@ export default function ConfiguracionScreen() {
     );
   };
 
-  const settingsItems: SettingsSection[] = [
-    {
-      title: 'Apariencia',
-      items: [
-        {
-          icon: 'moon-outline',
-          title: 'Modo oscuro',
-          type: 'switch',
-          value: isDarkMode,
-          onValueChange: toggleTheme,
-        }
-      ]
-    },
+  const baseSettingsItems: SettingsSection[] = [
     {
       title: 'Notificaciones',
       items: [
@@ -177,7 +200,11 @@ export default function ConfiguracionScreen() {
           icon: 'person-outline',
           title: 'Cambiar contraseña',
           type: 'navigate',
-          onPress: () => Alert.alert('Próximamente', 'Funcionalidad en desarrollo'),
+          onPress: () => Alert.alert(
+            'Cambiar contraseña',
+            'Recuerda que nosotros no manejamos tus contraseñas, de eso se encarga Google 😉',
+            [{ text: 'Entendido', style: 'default' }]
+          ),
         },
         {
           icon: 'mail-outline',
@@ -194,6 +221,7 @@ export default function ConfiguracionScreen() {
         }
       ]
     },
+
     {
       title: 'Soporte',
       items: [
@@ -201,7 +229,7 @@ export default function ConfiguracionScreen() {
           icon: 'help-circle-outline',
           title: 'Centro de ayuda',
           type: 'navigate',
-          onPress: () => router.push('/ayuda'),
+          onPress: () => router.push({ pathname: '/ayuda', params: { mode: isDJMode ? 'dj' : 'client' } }),
         },
         {
           icon: 'information-circle-outline',
@@ -213,12 +241,56 @@ export default function ConfiguracionScreen() {
     }
   ];
 
+  // Agregar botón de cambiar modo si es DJ
+  // Usar useMemo para recalcular cuando cambien los valores
+  const userIsDJ = hasDJProfile === true || isDJ === true || params.mode === 'dj';
+  
+  console.log('🔧 Verificando si mostrar botón de cambio de modo:', {
+    hasDJProfile,
+    isDJ,
+    paramsMode: params.mode,
+    isDJMode,
+    userIsDJ
+  });
+  
+  // Construir settingsItems dinámicamente para que se actualice cuando cambien los estados
+  const settingsItems = useMemo(() => {
+    const items = [...baseSettingsItems];
+    
+    // SIEMPRE mostrar el botón si el usuario es DJ, sin importar el modo actual
+    if (userIsDJ) {
+      items.unshift({
+        title: 'Modo de Aplicación',
+        items: [
+          {
+            icon: isDJMode ? 'person-outline' : 'musical-notes-outline',
+            title: isDJMode ? 'Cambiar a modo Cliente' : 'Cambiar a modo DJ',
+            subtitle: isDJMode ? 'Ver la app como cliente' : 'Volver a gestionar mi perfil DJ',
+            type: 'navigate',
+            onPress: () => {
+              if (isDJMode) {
+                router.push('/home-cliente');
+              } else {
+                router.push('/home-dj');
+              }
+            },
+          }
+        ]
+      });
+      console.log('✅ Botón de cambio de modo AGREGADO - userIsDJ:', userIsDJ);
+    } else {
+      console.log('⚠️ Botón de cambio de modo NO se mostrará porque userIsDJ es false');
+    }
+    
+    return items;
+  }, [userIsDJ, isDJMode, router, notificationsEnabled, locationEnabled, isDJMode]);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={() => router.push(isDJMode ? '/apartadodj' : '/apartadomascliente')}
         >
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
@@ -290,12 +362,12 @@ export default function ConfiguracionScreen() {
       </ScrollView>
 
       <BottomNavBar
-        activeTab="apartadomascliente"
-        onHomePress={() => router.push('/home-cliente')}
-        onEventosPress={() => router.push('/eventos-cliente' as any)}
-        onSearchPress={() => router.push('/chats-cliente')}
-        onAlertasPress={() => router.push('/alertas-cliente')}
-        onMasPress={() => {}}
+        activeTab={isDJMode ? 'apartadomasdj' : 'apartadomascliente'}
+        onHomePress={() => router.push(isDJMode ? '/home-dj' : '/home-cliente')}
+        onEventosPress={() => router.push(isDJMode ? '/eventos-dj' : '/eventos-cliente' as any)}
+        onSearchPress={() => router.push(isDJMode ? '/chats-dj' : '/chats-cliente')}
+        onAlertasPress={() => router.push(isDJMode ? '/alertas-dj' : '/alertas-cliente')}
+        onMasPress={() => router.push(isDJMode ? '/apartadodj' : '/apartadomascliente')}
       />
     </SafeAreaView>
   );

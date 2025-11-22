@@ -10,7 +10,7 @@ import { useNotifications } from '../lib/NotificationContext';
 function HomeIcon({ color = '#999' }) {
   return (
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-      <Path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <Path stroke="none" d="M0 0h24v24H0z" fill="none" />
       <Path d="M12.707 2.293l9 9c.63 .63 .184 1.707 -.707 1.707h-1v6a3 3 0 0 1 -3 3h-1v-7a3 3 0 0 0 -2.824 -2.995l-.176 -.005h-2a3 3 0 0 0 -3 3v7h-1a3 3 0 0 1 -3 -3v-6h-1c-.89 0 -1.337 -1.077 -.707 -1.707l9 -9a1 1 0 0 1 1.414 0m.293 11.707a1 1 0 0 1 1 1v7h-4v-7a1 1 0 0 1 .883 -.993l.117 -.007z" fill={color} />
     </Svg>
   );
@@ -19,7 +19,7 @@ function HomeIcon({ color = '#999' }) {
 function CalendarIcon({ color = '#999' }) {
   return (
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <Path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <Path stroke="none" d="M0 0h24v24H0z" fill="none" />
       <Path d="M4 7a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12z" />
       <Path d="M16 3v4" />
       <Path d="M8 3v4" />
@@ -38,7 +38,7 @@ function CalendarIcon({ color = '#999' }) {
 function SearchIcon({ color = '#fff' }) {
   return (
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <Path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <Path stroke="none" d="M0 0h24v24H0z" fill="none" />
       <Path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" />
       <Path d="M21 21l-6 -6" />
     </Svg>
@@ -55,7 +55,7 @@ function MessagesIcon({ color = '#fff' }) {
 function BellIcon({ color = '#999' }) {
   return (
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <Path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <Path stroke="none" d="M0 0h24v24H0z" fill="none" />
       <Path d="M10 5a2 2 0 0 1 4 0a7 7 0 0 1 4 6v3a1 1 0 0 0 1 1h1a1 1 0 0 1 1 1v1a1 1 0 0 1 -1 1h-16a1 1 0 0 1 -1 -1v-1a1 1 0 0 1 1 -1h1a1 1 0 0 0 1 -1v-3a7 7 0 0 1 4 -6" />
       <Path d="M9 17v1a3 3 0 0 0 6 0v-1" />
     </Svg>
@@ -65,7 +65,7 @@ function BellIcon({ color = '#999' }) {
 function MenuIcon({ color = '#999' }) {
   return (
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <Path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+      <Path stroke="none" d="M0 0h24v24H0z" fill="none" />
       <Path d="M4 6l16 0" />
       <Path d="M4 12l16 0" />
       <Path d="M4 18l16 0" />
@@ -74,16 +74,16 @@ function MenuIcon({ color = '#999' }) {
 }
 
 // Componente de botón animado
-function AnimatedNavButton({ 
-  icon: Icon, 
-  label, 
-  isActive, 
+function AnimatedNavButton({
+  icon: Icon,
+  label,
+  isActive,
   onPress,
   badgeCount = 0
-}: { 
-  icon: React.ComponentType<any>; 
-  label: string; 
-  isActive: boolean; 
+}: {
+  icon: React.ComponentType<any>;
+  label: string;
+  isActive: boolean;
   onPress: () => void;
   badgeCount?: number;
 }) {
@@ -147,21 +147,21 @@ interface BottomNavBarProps {
 
 export default function BottomNavBar({
   activeTab = 'inicio',
-  onHomePress = () => {},
-  onEventosPress = () => {},
-  onSearchPress = () => {},
-  onAlertasPress = () => {},
-  onMasPress = () => {},
+  onHomePress,
+  onEventosPress,
+  onSearchPress,
+  onAlertasPress,
+  onMasPress,
   unreadCount = 0,
 }: BottomNavBarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   // 🔥 Usar el contexto de notificaciones para obtener el contador global
   const { unreadCount: globalUnreadCount } = useNotifications();
-  
+
   // Preferir el contador global si está disponible
   const finalUnreadCount = globalUnreadCount > 0 ? globalUnreadCount : unreadCount;
-  
+
   // 🔴 Logging para debugging
   console.log(`🎨 BottomNavBar renderizado - finalUnreadCount: ${finalUnreadCount}, globalUnreadCount: ${globalUnreadCount}`);
 
@@ -178,37 +178,37 @@ export default function BottomNavBar({
   }, [router]);
 
   // Fallbacks: si no vienen handlers, usar navegación estándar
-  const handleHome = onHomePress && onHomePress.toString() !== (() => {}).toString()
+  const handleHome = onHomePress
     ? onHomePress
     : () => navigateRoleAware('/home-dj', '/home-cliente');
 
-  const handleEventos = onEventosPress && onEventosPress.toString() !== (() => {}).toString()
+  const handleEventos = onEventosPress
     ? onEventosPress
     : () => navigateRoleAware('/eventos-dj', '/eventos-cliente');
 
-  const handleMensajes = onSearchPress && onSearchPress.toString() !== (() => {}).toString()
+  const handleMensajes = onSearchPress
     ? onSearchPress
     : () => navigateRoleAware('/chats-dj', '/chats-cliente');
 
-  const handleAlertas = onAlertasPress && onAlertasPress.toString() !== (() => {}).toString()
+  const handleAlertas = onAlertasPress
     ? onAlertasPress
     : () => navigateRoleAware('/alertas-dj', '/alertas-cliente');
 
-  const handleMas = onMasPress && onMasPress.toString() !== (() => {}).toString()
+  const handleMas = onMasPress
     ? onMasPress
     : () => navigateRoleAware('/apartadodj', '/apartadomascliente');
 
   return (
     <View style={[styles.bottomNavWrapper, { paddingBottom: insets.bottom }]}>
       <View style={styles.bottomNav}>
-        <AnimatedNavButton 
+        <AnimatedNavButton
           icon={HomeIcon}
           label="Inicio"
           isActive={activeTab === 'inicio'}
           onPress={handleHome}
         />
 
-        <AnimatedNavButton 
+        <AnimatedNavButton
           icon={CalendarIcon}
           label="Eventos"
           isActive={activeTab === 'eventos'}
@@ -217,7 +217,7 @@ export default function BottomNavBar({
 
         <View style={styles.navItemCenter}>
           <View style={styles.navCircleContainer}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.navCircle}
               onPress={handleMensajes}
             >
@@ -226,7 +226,7 @@ export default function BottomNavBar({
           </View>
         </View>
 
-        <AnimatedNavButton 
+        <AnimatedNavButton
           icon={BellIcon}
           label="Alertas"
           isActive={activeTab === 'alertas'}
@@ -234,11 +234,11 @@ export default function BottomNavBar({
           badgeCount={finalUnreadCount}
         />
 
-        <AnimatedNavButton 
+        <AnimatedNavButton
           icon={MenuIcon}
           label="Más"
           isActive={activeTab === 'mas' || activeTab === 'apartadomascliente' || activeTab === 'apartadomasdj'}
-          onPress={handleMas}
+          onPress={(activeTab === 'apartadomascliente' || activeTab === 'apartadomasdj') ? () => { } : handleMas}
         />
       </View>
     </View>

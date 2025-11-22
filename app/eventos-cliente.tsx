@@ -90,6 +90,7 @@ export default function EventosClienteScreen() {
               router.push({
                 pathname: '/reviews',
                 params: {
+                  mode: 'client',
                   eventId: selected.id,
                   revieweeId: selected.dj_id,
                   revieweeName: 'DJ', // TODO: Obtener nombre real del DJ
@@ -259,6 +260,7 @@ export default function EventosClienteScreen() {
                   router.push({
                     pathname: '/reviews',
                     params: {
+                      mode: 'client',
                       eventId: selected.id,
                       revieweeId: selected.dj_id,
                       revieweeName: 'DJ',

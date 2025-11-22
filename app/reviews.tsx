@@ -1,19 +1,20 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-    Alert,
-    FlatList,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  FlatList,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BottomNavBar from '../components/BottomNavBar';
 import type { ReviewRow } from '../lib/db-types';
 import { createReview, listReviewsForUser } from '../lib/reviews-functions';
+import { useRole } from '../lib/RoleContext';
 import { getCurrentUser } from '../lib/supabase';
 
 interface ReviewFormData {
@@ -27,6 +28,18 @@ interface ReviewFormData {
 export default function ResenasScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { isDJ, isLoading } = useRole();
+
+  // Determine mode from params - if mode is explicitly 'client', force client mode
+  // If mode is 'dj', force DJ mode
+  // Otherwise, use isDJ but prioritize explicit client mode
+  const isDJMode = params.mode === 'dj' && params.mode !== 'client' ? true : 
+                   params.mode === 'client' ? false : 
+                   (isDJ && params.mode !== 'client');
+
+  // Debug logging
+  console.log('🎯 ResenasScreen - isDJ:', isDJ, 'params.mode:', params.mode, 'isDJMode:', isDJMode, 'isLoading:', isLoading);
+
   const [reviews, setReviews] = useState<ReviewRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -298,32 +311,23 @@ export default function ResenasScreen() {
       )}
 
       <BottomNavBar
-        activeTab={currentUser?.user_metadata?.user_type === 'dj' ? 'apartadomasdj' : 'apartadomascliente'}
+        activeTab={isDJMode ? 'apartadomasdj' : 'apartadomascliente'}
         onHomePress={() => {
-          const route = currentUser?.user_metadata?.user_type === 'dj'
-            ? '/home-dj'
-            : '/home-cliente';
-          router.push(route);
+          console.log('🏠 Home pressed - isDJMode:', isDJMode);
+          router.push(isDJMode ? '/home-dj' : '/home-cliente');
         }}
         onEventosPress={() => {
-          const route = currentUser?.user_metadata?.user_type === 'dj'
-            ? '/eventos-dj'
-            : '/eventos-cliente';
-          router.push(route as any);
+          router.push(isDJMode ? '/eventos-dj' : '/eventos-cliente' as any);
         }}
         onSearchPress={() => {
-          const route = currentUser?.user_metadata?.user_type === 'dj'
-            ? '/chats-dj'
-            : '/chats-cliente';
-          router.push(route as any);
+          router.push(isDJMode ? '/chats-dj' : '/chats-cliente' as any);
         }}
         onAlertasPress={() => {
-          const route = currentUser?.user_metadata?.user_type === 'dj'
-            ? '/alertas-dj'
-            : '/alertas-cliente';
-          router.push(route as any);
+          router.push(isDJMode ? '/alertas-dj' : '/alertas-cliente');
         }}
-        onMasPress={() => {}}
+        onMasPress={() => {
+          router.push(isDJMode ? '/apartadodj' : '/apartadomascliente');
+        }}
       />
     </SafeAreaView>
   );

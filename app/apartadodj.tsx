@@ -1,21 +1,22 @@
+
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import {
-    Alert,
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import BottomNavBar from '../components/BottomNavBar';
 import { getUnreadCount, markAllRead } from '../lib/notifications';
 import * as profileFunctions from '../lib/profile-functions';
-import { getCurrentUser } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 
 function HomeIcon() {
   return (
@@ -51,12 +52,41 @@ export default function ApartadoDJScreen() {
   const router = useRouter();
   const DJ_FLAG_KEY = '@mivok/is_dj_registered';
   const [unread, setUnread] = useState<number>(0);
+  const [djProfile, setDjProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Initial load
+  // Load user profile
   useEffect(() => {
+    loadProfile();
     // Cargar conteo de no leídas
     getUnreadCount().then(setUnread).catch(() => setUnread(0));
   }, []);
+
+  const loadProfile = async () => {
+    try {
+      const djProfile = await profileFunctions.getCurrentDJProfile();
+      console.log('📋 DJ Profile loaded:', djProfile);
+
+      // Also get user profile for name and photo
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: userProfile } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
+
+        console.log('👤 User Profile loaded:', userProfile);
+        setDjProfile({ ...djProfile, userProfile });
+      } else {
+        setDjProfile(djProfile);
+      }
+    } catch (error) {
+      console.error('Error loading profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleDeleteAccount = () => {
     Alert.alert(
@@ -96,6 +126,21 @@ export default function ApartadoDJScreen() {
     Alert.alert('Notificaciones', 'No tienes notificaciones nuevas');
   };
 
+  const handleLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        Alert.alert('Error', 'No se pudo cerrar sesión');
+        console.error('Error signing out:', error);
+      } else {
+        router.replace('/bienvenida' as any);
+      }
+    } catch (error) {
+      console.error('Error en handleLogout:', error);
+      Alert.alert('Error', 'Ocurrió un error inesperado');
+    }
+  };
+
   // 🔒 Photo change functionality moved to Editar Perfil screen only
 
   const menuItems = [
@@ -112,7 +157,7 @@ export default function ApartadoDJScreen() {
     {
       icon: <HelpIcon />,
       text: 'Ayuda',
-      onPress: () => router.push('/ayuda'),
+      onPress: () => router.push({ pathname: '/ayuda', params: { mode: 'dj' } }),
     },
     {
       icon: <Ionicons name="create" size={24} color="#666" />,
@@ -135,7 +180,7 @@ export default function ApartadoDJScreen() {
     {
       icon: <Ionicons name="star" size={24} color="#666" />,
       text: 'Mis Reseñas',
-      onPress: () => router.push('/reviews'),
+      onPress: () => router.push({ pathname: '/reviews', params: { mode: 'dj' } }),
     },
     {
       icon: <Ionicons name="card" size={24} color="#666" />,
@@ -145,13 +190,13 @@ export default function ApartadoDJScreen() {
     {
       icon: <Ionicons name="settings" size={24} color="#666" />,
       text: 'Configuración',
-      onPress: () => router.push('/configuracion'),
+      onPress: () => router.push({ pathname: '/configuracion', params: { mode: 'dj' } }),
     },
   ];
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView 
+      <ScrollView
         style={styles.scrollContainer}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -160,32 +205,41 @@ export default function ApartadoDJScreen() {
         <View style={styles.profileCardContainer}>
           <View style={styles.profileCard}>
             <View style={styles.profileHeader}>
-              <TouchableOpacity 
-                style={styles.avatarContainer} 
+              <TouchableOpacity
+                style={styles.avatarContainer}
                 disabled={true}
                 activeOpacity={0.7}
               >
                 <View style={styles.avatarCircle}>
+                  {djProfile?.userProfile?.foto_url ? (
+                    <Image
+                      source={{ uri: djProfile.userProfile.foto_url }}
+                      style={styles.avatarImage}
+                    />
+                  ) : (
                     <Svg width={60} height={60} viewBox="0 0 24 24" fill="#5B7EFF">
-                      <Path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                      <Path stroke="none" d="M0 0h24v24H0z" fill="none" />
                       <Path d="M12 2a5 5 0 1 1 -5 5l.005 -.217a5 5 0 0 1 4.995 -4.783z" />
                       <Path d="M14 14a5 5 0 0 1 5 5v1a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-1a5 5 0 0 1 5 -5h4z" />
                     </Svg>
+                  )}
                 </View>
                 {/* Camera Icon Badge */}
                 <View style={styles.cameraIcon}>
                   <Ionicons name="camera" size={14} color="#fff" />
                 </View>
               </TouchableOpacity>
-              
+
               <View style={styles.profileInfo}>
-                <Text style={styles.userName}>Usuario</Text>
+                <Text style={styles.userName}>
+                  {djProfile?.userProfile?.last_name?.split(' - ')[0] || 'Usuario'}
+                </Text>
                 <Text style={styles.userSubtitle}>DJ Premium</Text>
               </View>
             </View>
 
             {/* Edit Profile Button */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.editProfileBtn}
               onPress={() => router.push({
                 pathname: '/editar-perfil',
@@ -306,8 +360,12 @@ export default function ApartadoDJScreen() {
       </ScrollView>
 
       {/* Bottom Navigation */}
-      <BottomNavBar 
+      <BottomNavBar
         activeTab="apartadomasdj"
+        onHomePress={() => router.push('/home-dj')}
+        onEventosPress={() => router.push('/eventos-dj' as any)}
+        onSearchPress={() => router.push('/chats-dj')}
+        onAlertasPress={() => router.push('/alertas-dj')}
       />
     </SafeAreaView>
   );
@@ -375,6 +433,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#1a1a1a',
+  },
+  avatarImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
   },
   profileInfo: {
     flex: 1,

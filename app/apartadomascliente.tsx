@@ -3,20 +3,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-    Alert,
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import BottomNavBar from '../components/BottomNavBar';
 import { getUnreadCount, markAllRead } from '../lib/notifications';
 import * as profileFunctions from '../lib/profile-functions';
-import { getCurrentUser, supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 function HomeIcon() {
   return (
     <Ionicons name="home-outline" size={24} color="#666" />
@@ -45,12 +45,56 @@ export default function ApartadoMasClienteScreen() {
   const router = useRouter();
   const DJ_FLAG_KEY = '@mivok/is_dj_registered';
   const [unread, setUnread] = useState<number>(0);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string>('Usuario');
+
+  // Cargar perfil del usuario
+  const loadProfile = useCallback(async () => {
+    try {
+      const profile = await profileFunctions.getCurrentProfile();
+      if (profile) {
+        setUserProfile(profile);
+        // Obtener nombre: first_name o email o 'Usuario'
+        const name = profile.first_name?.trim() || 
+                    (profile.email ? profile.email.split('@')[0] : '') || 
+                    'Usuario';
+        setUserName(name);
+        
+        // Cargar imagen de perfil
+        if (profile.foto_url) {
+          setProfileImage(profile.foto_url);
+        } else {
+          setProfileImage(null);
+        }
+        
+        console.log('✅ Perfil del cliente cargado:', { name, hasImage: !!profile.foto_url });
+      } else {
+        console.log('ℹ️ No se encontró perfil del cliente');
+        setUserName('Usuario');
+        setProfileImage(null);
+      }
+    } catch (error) {
+      console.error('❌ Error cargando perfil del cliente:', error);
+      setUserName('Usuario');
+      setProfileImage(null);
+    }
+  }, []);
+
+  // Cargar perfil cuando la pantalla recibe foco
+  useFocusEffect(
+    useCallback(() => {
+      loadProfile();
+    }, [loadProfile])
+  );
 
   // Initial load
   useEffect(() => {
     // Cargar conteo de no leídas
     getUnreadCount().then(setUnread).catch(() => setUnread(0));
-  }, []);
+    // Cargar perfil
+    loadProfile();
+  }, [loadProfile]);
 
   const handleLogout = async () => {
     Alert.alert(
@@ -94,7 +138,7 @@ export default function ApartadoMasClienteScreen() {
     {
       icon: <HomeIcon />,
       text: 'Inicio',
-      onPress: () => router.back(),
+      onPress: () => router.push('/home-cliente'),
     },
     {
       icon: <BellIcon />,
@@ -104,7 +148,7 @@ export default function ApartadoMasClienteScreen() {
     {
       icon: <HelpIcon />,
       text: 'Ayuda',
-      onPress: () => router.push('/ayuda'),
+      onPress: () => router.push({ pathname: '/ayuda', params: { mode: 'client' } }),
     },
     {
       icon: <Ionicons name="create" size={24} color="#666" />,
@@ -117,13 +161,13 @@ export default function ApartadoMasClienteScreen() {
     {
       icon: <Ionicons name="star" size={24} color="#666" />,
       text: 'Mis Reseñas',
-      onPress: () => router.push('/reviews'),
+      onPress: () => router.push({ pathname: '/reviews', params: { mode: 'client' } }),
     },
   ];
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView 
+      <ScrollView
         style={styles.scrollContainer}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -132,32 +176,39 @@ export default function ApartadoMasClienteScreen() {
         <View style={styles.profileCardContainer}>
           <View style={styles.profileCard}>
             <View style={styles.profileHeader}>
-              <TouchableOpacity 
-                style={styles.avatarContainer} 
+              <TouchableOpacity
+                style={styles.avatarContainer}
                 disabled={true}
                 activeOpacity={0.7}
               >
                 <View style={styles.avatarCircle}>
+                  {profileImage ? (
+                    <Image 
+                      source={{ uri: profileImage }} 
+                      style={styles.avatarImage}
+                    />
+                  ) : (
                     <Svg width={60} height={60} viewBox="0 0 24 24" fill="#5B7EFF">
-                      <Path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                      <Path stroke="none" d="M0 0h24v24H0z" fill="none" />
                       <Path d="M12 2a5 5 0 1 1 -5 5l.005 -.217a5 5 0 0 1 4.995 -4.783z" />
                       <Path d="M14 14a5 5 0 0 1 5 5v1a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-1a5 5 0 0 1 5 -5h4z" />
                     </Svg>
+                  )}
                 </View>
                 {/* Camera Icon Badge */}
                 <View style={styles.cameraIcon}>
                   <Ionicons name="camera" size={14} color="#fff" />
                 </View>
               </TouchableOpacity>
-              
+
               <View style={styles.profileInfo}>
-                <Text style={styles.userName}>Usuario</Text>
+                <Text style={styles.userName}>{userName}</Text>
                 <Text style={styles.userSubtitle}>Cliente Premium</Text>
               </View>
             </View>
 
             {/* Edit Profile Button */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.editProfileBtn}
               onPress={() => router.push({
                 pathname: '/editar-perfil',
@@ -223,7 +274,7 @@ export default function ApartadoMasClienteScreen() {
               {/* Configuración */}
               <TouchableOpacity
                 style={styles.menuItemModern}
-                onPress={() => router.push('/configuracion')}
+                onPress={() => router.push({ pathname: '/configuracion', params: { mode: 'client' } })}
               >
                 <View style={styles.menuIconWrapper}>
                   <Ionicons name="settings" size={24} color="#666" />
@@ -257,13 +308,12 @@ export default function ApartadoMasClienteScreen() {
       </ScrollView>
 
       {/* Bottom Navigation */}
-      <BottomNavBar 
+      <BottomNavBar
         activeTab="apartadomascliente"
         onHomePress={() => router.push('/home-cliente')}
         onEventosPress={() => router.push('/eventos-cliente' as any)}
         onSearchPress={() => router.push('/chats-cliente')}
         onAlertasPress={() => router.push('/alertas-cliente')}
-        onMasPress={() => {}}
       />
     </SafeAreaView>
   );
@@ -315,8 +365,8 @@ const styles = StyleSheet.create({
     borderColor: '#5B7EFF',
   },
   avatarImage: {
-    width: '100%',
-    height: '100%',
+    width: 80,
+    height: 80,
     borderRadius: 40,
   },
   cameraIcon: {

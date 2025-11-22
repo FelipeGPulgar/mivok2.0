@@ -1,18 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BottomNavBar from '../components/BottomNavBar';
+import { useRole } from '../lib/RoleContext';
 
 export default function AyudaScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const { isDJ } = useRole();
+
+  // Si viene el parámetro mode='dj', forzamos modo DJ
+  // Si viene mode='client', forzamos modo cliente
+  // Si no viene nada, usamos el rol del usuario
+  const isDJMode = params.mode === 'dj' || (isDJ && params.mode !== 'client');
 
   const faqs = [
     {
@@ -54,7 +62,7 @@ export default function AyudaScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={() => router.push(isDJMode ? '/apartadodj' : '/apartadomascliente')}
         >
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
@@ -101,12 +109,12 @@ export default function AyudaScreen() {
       </ScrollView>
 
       <BottomNavBar
-        activeTab="apartadomascliente"
-        onHomePress={() => router.push('/home-cliente')}
-        onEventosPress={() => router.push('/eventos-cliente' as any)}
-        onSearchPress={() => router.push('/chats-cliente')}
-        onAlertasPress={() => router.push('/alertas-cliente')}
-        onMasPress={() => {}}
+        activeTab={isDJMode ? 'apartadomasdj' : 'apartadomascliente'}
+        onHomePress={() => router.push(isDJMode ? '/home-dj' : '/home-cliente')}
+        onEventosPress={() => router.push(isDJMode ? '/eventos-dj' : '/eventos-cliente' as any)}
+        onSearchPress={() => router.push(isDJMode ? '/chats-dj' : '/chats-cliente')}
+        onAlertasPress={() => router.push(isDJMode ? '/alertas-dj' : '/alertas-cliente')}
+        onMasPress={() => router.push(isDJMode ? '/apartadodj' : '/apartadomascliente')}
       />
     </SafeAreaView>
   );

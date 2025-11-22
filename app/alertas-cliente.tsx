@@ -254,7 +254,7 @@ export default function AlertasClienteScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.push('/home-cliente')}>
           <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#5B7EFF" strokeWidth={2}>
             <Path stroke="none" d="M0 0h24v24H0z" fill="none" />
             <Path d="M15 6l-6 6l6 6" />
