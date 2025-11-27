@@ -48,8 +48,18 @@ app.post('/create_preference', async (req, res) => {
     });
 
     const data = await response.json();
-
     if (!response.ok) {
+      // Si Mercado Pago bloquea por políticas (403) y queremos testear localmente,
+      // permitimos un fallback mock si la variable USE_MOCK=true está presente.
+      if (response.status === 403 && process.env.USE_MOCK === 'true') {
+        console.warn('MP returned 403; returning MOCK preference because USE_MOCK=true');
+        const mock = {
+          id: 'MOCK_PREF_12345',
+          init_point: 'https://www.google.com',
+          sandbox_init_point: 'https://www.google.com'
+        };
+        return res.json(mock);
+      }
       return res.status(response.status).json({ error: 'Mercado Pago error', details: data });
     }
 

@@ -2,6 +2,10 @@ Mercado Pago — Microserver para crear preferences (sandbox)
 
 Este microservicio facilita crear "preferences" en Mercado Pago sin exponer el `ACCESS_TOKEN` en el cliente.
 
+NUEVO: Fallback MOCK
+- Si Mercado Pago devuelve 403 por políticas (PA_UNAUTHORIZED_RESULT_FROM_POLICIES) puedes activar un fallback local para pruebas sin llamar a la API real.
+- Para activar el mock exporta la variable `USE_MOCK=true` al arrancar el servidor.
+
 1) Instalación
 
 ```bash
@@ -27,7 +31,14 @@ MP_ACCESS_TOKEN=TEST-5160688124204874-xxxxxxxx node index.js
 3) Ejecutar
 
 ```bash
+# Modo normal (usa Mercado Pago)
 npm start
+
+# Modo mock (si Mercado Pago bloquee tu token por políticas y quieres probar la app)
+# En zsh / macOS:
+USE_MOCK=true npm start
+# o:
+USE_MOCK=true node index.js
 ```
 
 El servidor estará disponible en `http://localhost:3000` por defecto y expondrá la ruta POST `/create_preference`.
