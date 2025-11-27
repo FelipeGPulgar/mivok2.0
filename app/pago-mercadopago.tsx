@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
+import { Platform } from 'react-native';
+import { useRole } from '../lib/RoleContext';
 import {
     ActivityIndicator,
     Alert,
@@ -37,6 +39,7 @@ export default function PagoMercadoPagoScreen() {
     const [modalVisible, setModalVisible] = useState(false);
     const [webviewVisible, setWebviewVisible] = useState(false);
     const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+    const { isDJ, isLoading: roleLoading } = useRole();
 
     const createPreference = async () => {
         setLoading(true);
@@ -53,7 +56,11 @@ export default function PagoMercadoPagoScreen() {
             // eslint-disable-next-line @typescript-eslint/no-var-requires
             // @ts-ignore
             const localSecrets = require('../secrets.local');
-            const serverUrl = localSecrets.MP_SERVER_URL || 'http://localhost:3000';
+            let serverUrl = localSecrets.MP_SERVER_URL || 'http://localhost:3000';
+            // Si estamos en Android emulator, reemplazamos localhost por 10.0.2.2
+            if (Platform.OS === 'android' && serverUrl.includes('localhost')) {
+                serverUrl = serverUrl.replace('localhost', '10.0.2.2');
+            }
 
             const response = await fetch(`${serverUrl}/create_preference`, {
                 method: 'POST',
@@ -101,9 +108,17 @@ export default function PagoMercadoPagoScreen() {
                 console.error('Error creating preference:', data);
                 Alert.alert('Error', 'No se pudo iniciar el pago. Verifica el Access Token.');
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error en createPreference:', error);
-            Alert.alert('Error', 'Error de conexión con Mercado Pago.');
+            const message = (error && error.message) ? error.message : String(error);
+            if (message.includes('Network request failed')) {
+                Alert.alert(
+                    'Error de red',
+                    'No se pudo conectar al servidor de pruebas. Si estás probando en un dispositivo físico, asegúrate de que `MP_SERVER_URL` en `secrets.local.ts` apunte a la IP de tu máquina (ej. http://192.168.1.20:3000). Si usas Android emulator, usa 10.0.2.2 en lugar de localhost.'
+                );
+            } else {
+                Alert.alert('Error', 'Error de conexión con Mercado Pago. ' + message);
+            }
         } finally {
             setLoading(false);
         }
@@ -133,9 +148,9 @@ export default function PagoMercadoPagoScreen() {
                 </View>
 
                 <TouchableOpacity
-                    style={styles.payButton}
+                    style={[styles.payButton, (loading || roleLoading || isDJ) ? { opacity: 0.6 } : null]}
                     onPress={createPreference}
-                    disabled={loading}
+                    disabled={loading || roleLoading || !!isDJ}
                 >
                     {loading ? (
                         <ActivityIndicator color="#fff" />
@@ -146,6 +161,10 @@ export default function PagoMercadoPagoScreen() {
                         </>
                     )}
                 </TouchableOpacity>
+
+                {isDJ ? (
+                    <Text style={[styles.secureText, { color: '#f66', marginTop: 8 }]}>Los DJs no pueden pagar por servicios. Inicia sesión como cliente para realizar pagos.</Text>
+                ) : null}
 
                 <Text style={styles.secureText}>
                     <Ionicons name="lock-closed-outline" size={14} color="#888" /> Pago 100% seguro vía Web
