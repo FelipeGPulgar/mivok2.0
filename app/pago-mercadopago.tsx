@@ -47,11 +47,18 @@ export default function PagoMercadoPagoScreen() {
 
             console.log('📦 Datos:', { unitPrice, title });
 
-            const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
+            // Llamamos al microservicio local para crear la preference (más seguro)
+            // El servidor usará MP_ACCESS_TOKEN en sus variables de entorno.
+            // `MP_SERVER_URL` se define en `secrets.local.ts` si necesitas cambiar el host (emulador Android: 10.0.2.2)
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            // @ts-ignore
+            const localSecrets = require('../secrets.local');
+            const serverUrl = localSecrets.MP_SERVER_URL || 'http://localhost:3000';
+
+            const response = await fetch(`${serverUrl}/create_preference`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${ACCESS_TOKEN}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     items: [
@@ -63,13 +70,12 @@ export default function PagoMercadoPagoScreen() {
                             unit_price: unitPrice
                         }
                     ],
-                    // Combinación Ganadora: Safari (Linking) + Email de Prueba Explícito
                     payer: {
                         email: 'TESTUSER330557785022387793@testuser.com'
                     },
                     binary_mode: false,
                     back_urls: {
-                        success: 'https://www.google.com', // En producción usar deep link de la app
+                        success: 'https://www.google.com',
                         failure: 'https://www.google.com',
                         pending: 'https://www.google.com'
                     },
