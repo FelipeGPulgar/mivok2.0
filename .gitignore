@@ -37,3 +37,6 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
+
+# Secrets local (no versionar)
+secrets.local.ts
