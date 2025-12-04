@@ -39,11 +39,11 @@ export interface UserProfile {
 export const signInWithGoogle = async () => {
   try {
     console.log('🔄 Iniciando autenticación con Google... Plataforma:', Platform.OS);
-    
+
     // URL de redirect mejorada para Expo
     const redirectUrl = Linking.createURL('/');
     console.log('🔗 Redirect URL:', redirectUrl);
-    
+
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -69,14 +69,14 @@ export const signInWithGoogle = async () => {
 
     console.log('📱 Resultado completo:', JSON.stringify(authResult, null, 2));
     console.log('📱 Tipo de resultado:', authResult.type);
-    console.log('📱 URL de resultado:', authResult.url);
+    console.log('📱 URL de resultado:', authResult.type === 'success' ? authResult.url : 'N/A');
 
     if (authResult.type === 'success' && authResult.url) {
       console.log('🔗 URL de callback recibida:', authResult.url);
-      
+
       // Manejo mejorado de la URL de callback
       const { queryParams } = Linking.parse(authResult.url);
-      
+
       // Extraer tokens de diferentes formas posibles
       let accessToken = null;
       let refreshToken = null;
@@ -93,13 +93,13 @@ export const signInWithGoogle = async () => {
       if (!accessToken) {
         const urlString = authResult.url;
         let paramString = '';
-        
+
         if (urlString.includes('#')) {
           paramString = urlString.split('#')[1];
         } else if (urlString.includes('?')) {
           paramString = urlString.split('?')[1];
         }
-        
+
         if (paramString) {
           const params = new URLSearchParams(paramString);
           accessToken = params.get('access_token');
@@ -107,18 +107,18 @@ export const signInWithGoogle = async () => {
           errorParam = params.get('error');
         }
       }
-      
+
       console.log('🔑 Access Token:', accessToken ? '✅' : '❌');
       console.log('🔄 Refresh Token:', refreshToken ? '✅' : '❌');
-      
+
       if (errorParam) {
         console.error('❌ Error en callback:', errorParam);
         return { success: false, error: errorParam };
       }
-      
+
       if (accessToken && refreshToken) {
         console.log('💾 Estableciendo sesión...');
-        
+
         const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken,
@@ -154,7 +154,7 @@ export const signInWithGoogle = async () => {
 
     console.error('❌ Tipo de resultado no reconocido:', authResult.type);
     return { success: false, error: 'No se pudo completar la autenticación' };
-    
+
   } catch (error: any) {
     console.error('❌ Error inesperado:', error);
     return { success: false, error: error.message };
@@ -165,11 +165,11 @@ export const signInWithGoogle = async () => {
 export const signInWithMicrosoft = async () => {
   try {
     console.log('🔄 Iniciando autenticación con Microsoft...');
-    
+
     // URL de redirect mejorada para Expo
     const redirectUrl = Linking.createURL('/');
     console.log('🔗 Redirect URL:', redirectUrl);
-    
+
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'azure',
       options: {
@@ -194,10 +194,10 @@ export const signInWithMicrosoft = async () => {
 
     if (authResult.type === 'success' && authResult.url) {
       console.log('🔗 URL de callback Microsoft recibida:', authResult.url);
-      
+
       // Manejo mejorado de la URL de callback
       const { queryParams } = Linking.parse(authResult.url);
-      
+
       // Extraer tokens de diferentes formas posibles
       let accessToken = null;
       let refreshToken = null;
@@ -214,13 +214,13 @@ export const signInWithMicrosoft = async () => {
       if (!accessToken) {
         const urlString = authResult.url;
         let paramString = '';
-        
+
         if (urlString.includes('#')) {
           paramString = urlString.split('#')[1];
         } else if (urlString.includes('?')) {
           paramString = urlString.split('?')[1];
         }
-        
+
         if (paramString) {
           const params = new URLSearchParams(paramString);
           accessToken = params.get('access_token');
@@ -228,18 +228,18 @@ export const signInWithMicrosoft = async () => {
           errorParam = params.get('error');
         }
       }
-      
+
       console.log('🔑 Microsoft Access Token:', accessToken ? '✅' : '❌');
       console.log('🔄 Microsoft Refresh Token:', refreshToken ? '✅' : '❌');
-      
+
       if (errorParam) {
         console.error('❌ Error en callback Microsoft:', errorParam);
         return { success: false, error: errorParam };
       }
-      
+
       if (accessToken && refreshToken) {
         console.log('💾 Estableciendo sesión Microsoft...');
-        
+
         const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken,
@@ -275,7 +275,7 @@ export const signInWithMicrosoft = async () => {
 
     console.error('❌ Tipo de resultado Microsoft no reconocido:', authResult.type);
     return { success: false, error: 'No se pudo completar la autenticación Microsoft' };
-    
+
   } catch (error: any) {
     console.error('❌ Error inesperado Microsoft:', error);
     return { success: false, error: error.message };
@@ -401,7 +401,7 @@ export const signInWithFacebook = async () => {
 const createOrUpdateUserProfile = async (user: any, provider: string) => {
   try {
     console.log('👤 Creando/actualizando perfil de usuario...');
-    
+
     const { data: existingProfile, error: fetchError } = await supabase
       .from('user_profiles')
       .select('*')
@@ -489,8 +489,8 @@ export const getUserProfile = async (userId: string): Promise<UserProfile | null
 
 // Función para actualizar nombre y apellido
 export const updateUserNames = async (
-  userId: string, 
-  firstName: string, 
+  userId: string,
+  firstName: string,
   lastName: string
 ): Promise<{ success: boolean; error?: string }> => {
   try {
@@ -526,7 +526,7 @@ export const safeGetUser = async () => {
     const res: any = await supabase.auth.getUser();
     return res;
   } catch (e: any) {
-    try { console.warn('⚠️ safeGetUser intercepted error from supabase.auth.getUser():', e?.message || e); } catch (_) {}
+    try { console.warn('⚠️ safeGetUser intercepted error from supabase.auth.getUser():', e?.message || e); } catch (_) { }
     return { data: { user: null }, error: null };
   }
 };
