@@ -1,5 +1,5 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { confirmEventRealization } from '../lib/events-functions';
 import { supabase } from '../lib/supabase';
@@ -16,77 +16,99 @@ export default function EventConfirmationScreen() {
   const role = (params.role as 'client' | 'dj') || 'client';
   const nombreEvento = params.nombreEvento || 'Evento';
 
-  // Check if already confirmed on mount
-  React.useEffect(() => {
-    const checkStatus = async () => {
-      if (!eventId) return;
-      try {
-        const { getEventById } = require('../lib/events-functions'); // Lazy import to avoid cycle if any
-        const ev = await getEventById(eventId);
-        if (ev) {
-          // Si el evento ya está completado (ambos confirmaron), redirigir o mostrar estado final
-          if (ev.estado === 'completado') {
-            Alert.alert(
-              '✅ Evento ya confirmado',
-              'Este evento ya ha sido confirmado por ambas partes.',
-              [
-                {
-                  text: role === 'dj'
-                    ? (paymentStatus === 'LIBERADO' ? 'Ver Comprobante' : 'Gestionar Pago (Kushki)')
-                    : 'Ver resumen',
-                  onPress: () => {
-                    if (role === 'dj') {
-                      if (paymentStatus === 'LIBERADO') {
-                        router.push('/mis-pagos-dj');
+  // Check if already confirmed on focus
+  useFocusEffect(
+    useCallback(() => {
+      const checkStatus = async () => {
+        if (!eventId) return;
+        try {
+          const { getEventById } = require('../lib/events-functions'); // Lazy import to avoid cycle if any
+          const ev = await getEventById(eventId);
+          if (ev) {
+            // Check payment status FIRST if DJ
+            let currentPaymentStatus = null;
+            if (role === 'dj') {
+              console.log('🔍 Checking payment status for DJ. EventID:', eventId);
+              const { data: payments, error: paymentError } = await supabase
+                .from('pagos')
+                .select('estado')
+                .eq('event_id', eventId)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+              if (paymentError) {
+                console.error('❌ Error fetching payment:', paymentError);
+              }
+
+              if (payments && payments.length > 0) {
+                const payment = payments[0];
+                console.log('✅ Payment found:', payment);
+                currentPaymentStatus = payment.estado;
+                setPaymentStatus(payment.estado);
+              } else {
+                console.warn('⚠️ No payment record found for event:', eventId);
+              }
+            }
+
+            // Si el evento ya está completado (ambos confirmaron), redirigir o mostrar estado final
+            if (ev.estado === 'completado') {
+              Alert.alert(
+                '✅ Evento ya confirmado',
+                'Este evento ya ha sido confirmado por ambas partes.',
+                [
+                  {
+                    text: role === 'dj'
+                      ? (currentPaymentStatus === 'LIBERADO' ? 'Ver Comprobante' : 'Gestionar Pago (Kushki)')
+                      : 'Ver resumen',
+                    onPress: () => {
+                      if (role === 'dj') {
+                        if (currentPaymentStatus === 'LIBERADO') {
+                          router.push({
+                            pathname: '/comprobante-kushki',
+                            params: {
+                              monto,
+                              nombreEvento,
+                              token: `TX-${eventId.slice(0, 8).toUpperCase()}` // Mock token based on event ID
+                            }
+                          });
+                        } else {
+                          router.push({
+                            pathname: '/kushki-chat',
+                            params: { eventId, monto }
+                          });
+                        }
                       } else {
-                        router.push({
-                          pathname: '/kushki-chat',
-                          params: { eventId, monto }
+                        router.replace({
+                          pathname: '/payment-result',
+                          params: {
+                            tipo: 'liberado',
+                            monto,
+                            porcentajeDJ: 100,
+                            porcentajeCliente: 0,
+                            motivo: 'Evento completado exitosamente',
+                            role,
+                          }
                         });
                       }
-                    } else {
-                      router.replace({
-                        pathname: '/payment-result',
-                        params: {
-                          tipo: 'liberado',
-                          monto,
-                          porcentajeDJ: 100,
-                          porcentajeCliente: 0,
-                          motivo: 'Evento completado exitosamente',
-                          role,
-                        }
-                      });
-                    }
-                  },
-                }
-              ]
-            );
-            return;
-          }
+                    },
+                  }
+                ]
+              );
+              return;
+            }
 
-          const myConfirmation = role === 'client' ? ev.client_confirmed_at : ev.dj_confirmed_at;
-          if (myConfirmation) {
-            setConfirmed(true);
-          }
-
-          // Check payment status
-          if (role === 'dj') {
-            const { data: payment } = await supabase
-              .from('pagos')
-              .select('estado')
-              .eq('event_id', eventId)
-              .single();
-            if (payment) {
-              setPaymentStatus(payment.estado);
+            const myConfirmation = role === 'client' ? ev.client_confirmed_at : ev.dj_confirmed_at;
+            if (myConfirmation) {
+              setConfirmed(true);
             }
           }
+        } catch (e) {
+          console.error('Error checking status:', e);
         }
-      } catch (e) {
-        console.error('Error checking status:', e);
-      }
-    };
-    checkStatus();
-  }, [eventId, role]);
+      };
+      checkStatus();
+    }, [eventId, role, paymentStatus]) // Added paymentStatus dependency to ensure alert uses latest state
+  );
 
   const handleConfirm = async () => {
     if (loading) return;

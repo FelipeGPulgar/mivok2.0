@@ -118,15 +118,46 @@ export default function KushkiChatScreen() {
                 );
             }
 
-            // Update payment status in DB
+            // Update payment status in DB (Robust: Create if missing)
             if (params.eventId) {
-                const { error } = await supabase
-                    .from('pagos')
-                    .update({ estado: 'LIBERADO' })
-                    .eq('event_id', params.eventId);
+                console.log('🔄 Updating payment status for event:', params.eventId);
 
-                if (error) console.error('Error updating payment status:', error);
-                else console.log('Payment updated to LIBERADO');
+                // 1. Check if payment exists
+                const { data: existingPayment, error: fetchError } = await supabase
+                    .from('pagos')
+                    .select('id')
+                    .eq('event_id', params.eventId)
+                    .maybeSingle();
+
+                if (fetchError) console.error('Error checking payment existence:', fetchError);
+
+                if (existingPayment) {
+                    // 2a. Update existing
+                    console.log('✅ Payment record found, updating to LIBERADO');
+                    const { error } = await supabase
+                        .from('pagos')
+                        .update({ estado: 'LIBERADO' })
+                        .eq('id', existingPayment.id);
+
+                    if (error) console.error('❌ Error updating payment status:', error);
+                } else {
+                    // 2b. Create new record (Self-healing)
+                    console.warn('⚠️ No payment record found, creating new one (Self-healing)');
+                    const currentUser = await getCurrentUser();
+                    const { error } = await supabase
+                        .from('pagos')
+                        .insert({
+                            event_id: params.eventId,
+                            dj_id: currentUser?.id,
+                            monto: params.monto ? Number(params.monto) : 0,
+                            estado: 'LIBERADO',
+                            token: `kushki_manual_${Date.now()}`,
+                            es_mock: true
+                        });
+
+                    if (error) console.error('❌ Error creating payment record:', error);
+                    else console.log('✅ New payment record created and released');
+                }
             }
 
             Alert.alert(

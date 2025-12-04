@@ -1,8 +1,10 @@
+
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     FlatList,
     StyleSheet,
     Text,
@@ -11,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
-import { getPaymentsForDJ, Payment } from '../lib/supabase-functions';
+import { getPaymentsForDJ, Payment, updatePaymentConfirmation } from '../lib/supabase-functions';
 
 export default function MisPagosDJScreen() {
     const router = useRouter();
@@ -21,11 +23,8 @@ export default function MisPagosDJScreen() {
     const [releasedAmount, setReleasedAmount] = useState(0);
     const [retainedAmount, setRetainedAmount] = useState(0);
 
-    useEffect(() => {
-        loadPayments();
-    }, []);
-
-    const loadPayments = async () => {
+    const fetchPayments = useCallback(async () => {
+        setLoading(true);
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
@@ -45,7 +44,13 @@ export default function MisPagosDJScreen() {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    useFocusEffect(
+        useCallback(() => {
+            fetchPayments();
+        }, [fetchPayments])
+    );
 
     const formatCLP = (amount: number) => {
         return amount.toLocaleString('es-CL', {
@@ -56,7 +61,7 @@ export default function MisPagosDJScreen() {
 
     const renderPaymentItem = ({ item }: { item: Payment }) => {
         const clientName = item.client_profile
-            ? `${item.client_profile.first_name} ${item.client_profile.last_name}`
+            ? `${item.client_profile.first_name} ${item.client_profile.last_name} `
             : 'Cliente';
 
         return (
@@ -95,21 +100,49 @@ export default function MisPagosDJScreen() {
 
                 {item.estado === 'LIBERADO' && (
                     <View style={styles.confirmationContainer}>
-                        <Text style={styles.confirmationTitle}>¿Recibiste el pago?</Text>
-                        <View style={styles.confirmationButtons}>
-                            <TouchableOpacity
-                                style={styles.confirmButton}
-                                onPress={() => alert('¡Gracias por confirmar! El pago ha sido verificado.')}
-                            >
-                                <Text style={styles.confirmButtonText}>✅ Sí, recibido</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={styles.reportButton}
-                                onPress={() => alert('Se ha enviado un reporte a soporte. Te contactaremos pronto.')}
-                            >
-                                <Text style={styles.reportButtonText}>❌ No me llegó</Text>
-                            </TouchableOpacity>
-                        </View>
+                        {item.dj_confirmation_status === 'received' ? (
+                            <View style={styles.confirmedBadge}>
+                                <Text style={styles.confirmedText}>✅ Confirmaste recepción el {new Date(item.dj_confirmation_at || new Date().toISOString()).toLocaleDateString()}</Text>
+                            </View>
+                        ) : item.dj_confirmation_status === 'reported' ? (
+                            <View style={styles.reportedBadge}>
+                                <Text style={styles.reportedText}>❌ Reportaste problema el {new Date(item.dj_confirmation_at || new Date().toISOString()).toLocaleDateString()}</Text>
+                            </View>
+                        ) : (
+                            <>
+                                <Text style={styles.confirmationTitle}>¿Recibiste el pago?</Text>
+                                <View style={styles.confirmationButtons}>
+                                    <TouchableOpacity
+                                        style={styles.confirmButton}
+                                        onPress={async () => {
+                                            const success = await updatePaymentConfirmation(item.id, 'received');
+                                            if (success) {
+                                                Alert.alert('¡Gracias!', 'Has confirmado la recepción del pago.');
+                                                fetchPayments(); // Refresh list
+                                            } else {
+                                                Alert.alert('Error', 'No se pudo guardar la confirmación.');
+                                            }
+                                        }}
+                                    >
+                                        <Text style={styles.confirmButtonText}>✅ Sí, recibido</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.reportButton}
+                                        onPress={async () => {
+                                            const success = await updatePaymentConfirmation(item.id, 'reported');
+                                            if (success) {
+                                                Alert.alert('Reporte Enviado', 'El equipo de soporte revisará tu caso.');
+                                                fetchPayments(); // Refresh list
+                                            } else {
+                                                Alert.alert('Error', 'No se pudo enviar el reporte.');
+                                            }
+                                        }}
+                                    >
+                                        <Text style={styles.reportButtonText}>❌ No me llegó</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </>
+                        )}
                     </View>
                 )}
             </View>
@@ -389,46 +422,67 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     confirmationContainer: {
-        marginTop: 12,
-        paddingTop: 12,
+        marginTop: 16,
+        paddingTop: 16,
         borderTopWidth: 1,
-        borderTopColor: '#222',
+        borderTopColor: '#333',
     },
     confirmationTitle: {
-        color: '#999',
-        fontSize: 12,
-        marginBottom: 8,
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: 'bold',
+        marginBottom: 12,
+        textAlign: 'center',
     },
     confirmationButtons: {
         flexDirection: 'row',
-        gap: 10,
+        gap: 12,
     },
     confirmButton: {
         flex: 1,
-        backgroundColor: 'rgba(16, 185, 129, 0.2)',
-        paddingVertical: 8,
+        backgroundColor: '#10B981',
+        paddingVertical: 10,
         borderRadius: 8,
         alignItems: 'center',
-        borderWidth: 1,
-        borderColor: '#10B981',
     },
     confirmButtonText: {
-        color: '#10B981',
-        fontSize: 12,
+        color: '#fff',
         fontWeight: 'bold',
+        fontSize: 14,
     },
     reportButton: {
         flex: 1,
-        backgroundColor: 'rgba(239, 68, 68, 0.2)',
-        paddingVertical: 8,
+        backgroundColor: '#EF4444',
+        paddingVertical: 10,
         borderRadius: 8,
         alignItems: 'center',
-        borderWidth: 1,
-        borderColor: '#EF4444',
     },
     reportButtonText: {
+        color: '#fff',
+        fontWeight: 'bold',
+        fontSize: 14,
+    },
+    confirmedBadge: {
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        padding: 10,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    confirmedText: {
+        color: '#10B981',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    reportedBadge: {
+        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+        padding: 10,
+        borderRadius: 8,
+        alignItems: 'center',
+    },
+    reportedText: {
         color: '#EF4444',
         fontSize: 12,
-        fontWeight: 'bold',
+        fontWeight: '600',
     },
 });
+

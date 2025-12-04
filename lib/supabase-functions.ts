@@ -674,6 +674,8 @@ export interface Payment {
     first_name: string;
     last_name: string;
   };
+  dj_confirmation_status?: 'pending' | 'received' | 'reported';
+  dj_confirmation_at?: string;
 }
 
 // Obtener pagos de un DJ
@@ -816,5 +818,32 @@ export const getUnpaidAcceptedProposals = async (clientId: string): Promise<Prop
   } catch (error) {
     console.error('❌ Error en getUnpaidAcceptedProposals:', error);
     return [];
+  }
+};
+
+// Actualizar confirmación de recepción de pago por parte del DJ
+export const updatePaymentConfirmation = async (
+  paymentId: string,
+  status: 'received' | 'reported'
+): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from('pagos')
+      .update({
+        dj_confirmation_status: status,
+        dj_confirmation_at: new Date().toISOString()
+      })
+      .eq('id', paymentId);
+
+    if (error) {
+      console.error('❌ Error actualizando confirmación de pago:', error);
+      return false;
+    }
+
+    console.log(`✅ Confirmación de pago actualizada a: ${status}`);
+    return true;
+  } catch (error) {
+    console.error('❌ Error en updatePaymentConfirmation:', error);
+    return false;
   }
 };
