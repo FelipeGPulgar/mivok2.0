@@ -260,27 +260,27 @@ export default function ConfiguracionScreen() {
     // SIEMPRE mostrar el botón si el usuario es DJ, sin importar el modo actual
     if (userIsDJ) {
       items.unshift({
-        title: 'Modo de Aplicación',
-        items: [
-          {
-            icon: isDJMode ? 'person-outline' : 'musical-notes-outline',
-            title: isDJMode ? 'Cambiar a modo Cliente' : 'Cambiar a modo DJ',
-            subtitle: isDJMode ? 'Ver la app como cliente' : 'Volver a gestionar mi perfil DJ',
-            type: 'navigate',
-            onPress: () => {
-              if (isDJMode) {
-                router.push('/home-cliente');
-              } else {
-                router.push('/home-dj');
-              }
-            },
-          }
-        ]
-      });
+      title: 'Modo de Aplicación',
+      items: [
+        {
+          icon: isDJMode ? 'person-outline' : 'musical-notes-outline',
+          title: isDJMode ? 'Cambiar a modo Cliente' : 'Cambiar a modo DJ',
+          subtitle: isDJMode ? 'Ver la app como cliente' : 'Volver a gestionar mi perfil DJ',
+          type: 'navigate',
+          onPress: () => {
+            if (isDJMode) {
+              router.push('/home-cliente');
+            } else {
+              router.push('/home-dj');
+            }
+          },
+        }
+      ]
+    });
       console.log('✅ Botón de cambio de modo AGREGADO - userIsDJ:', userIsDJ);
     } else {
       console.log('⚠️ Botón de cambio de modo NO se mostrará porque userIsDJ es false');
-    }
+  }
     
     return items;
   }, [userIsDJ, isDJMode, router, notificationsEnabled, locationEnabled, isDJMode]);

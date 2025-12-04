@@ -18,8 +18,14 @@ app.get('/', (req, res) => {
   res.json({ ok: true, msg: 'Mivok Mercado Pago microserver' });
 });
 
+// Simple health endpoint to verify reachability from devices
+app.get('/health', (req, res) => {
+  res.json({ ok: true, now: new Date().toISOString(), ip: req.ip, hostname: req.hostname });
+});
+
 app.post('/create_preference', async (req, res) => {
   try {
+    console.log('POST /create_preference from', req.ip, 'body:', JSON.stringify(req.body));
     if (!MP_ACCESS_TOKEN) return res.status(500).json({ error: 'MP_ACCESS_TOKEN not configured' });
 
     const { items, payer, back_urls, binary_mode, auto_return } = req.body;
@@ -71,6 +77,7 @@ app.post('/create_preference', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Mivok MP microserver listening on http://localhost:${PORT}`);
+// Bind to 0.0.0.0 so the server is reachable from other devices on the LAN
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Mivok MP microserver listening on http://0.0.0.0:${PORT}`);
 });

@@ -133,11 +133,10 @@ export async function getEventById(id: UUID): Promise<EventRow | null> {
 
 export async function listEventsForUser(userId: UUID, role: 'client' | 'dj'): Promise<EventRow[]> {
   try {
-    const column = role === 'client' ? 'client_id' : 'dj_id';
     const { data, error } = await supabase
       .from('events')
       .select('*')
-      .eq(column, userId)
+      .or(`client_id.eq.${userId},dj_id.eq.${userId}`)
       .order('fecha', { ascending: false })
       .order('created_at', { ascending: false });
 
@@ -153,26 +152,138 @@ export async function listEventsForUser(userId: UUID, role: 'client' | 'dj'): Pr
   }
 }
 
-export async function cancelEvent(id: UUID): Promise<boolean> {
+export async function confirmEventRealization(eventId: UUID, role: 'client' | 'dj'): Promise<{ success: boolean; bothConfirmed: boolean; error?: any }> {
+  try {
+    const now = new Date().toISOString();
+    const updateField = role === 'client' ? 'client_confirmed_at' : 'dj_confirmed_at';
+
+    // 1. Update confirmation timestamp
+    const { data: event, error } = await supabase
+      .from('events')
+      .update({ [updateField]: now })
+      .eq('id', eventId)
+      .select('dj_confirmed_at, client_confirmed_at')
+      .single();
+
+    if (error) {
+      console.error('❌ Error confirming event:', error);
+      return { success: false, bothConfirmed: false, error };
+    }
+
+    // 2. Check if both confirmed
+    const bothConfirmed = !!(event?.dj_confirmed_at && event?.client_confirmed_at);
+
+    // 3. If both confirmed, update status to 'completado' (if not already)
+    if (bothConfirmed) {
+      await supabase
+        .from('events')
+        .update({ estado: 'completado', completada_at: now })
+        .eq('id', eventId);
+
+      // Here you would trigger the payment release logic
+      console.log('🎉 Both parties confirmed! Payment should be released.');
+
+      // 3. Update Payment Status in 'pagos' table
+      const { error: paymentError } = await supabase
+        .from('pagos')
+        .update({ estado: 'LIBERADO' })
+        .eq('event_id', eventId);
+
+      if (paymentError) {
+        console.error('❌ Error updating payment status:', paymentError);
+      } else {
+        console.log('✅ Payment status updated to LIBERADO');
+      }
+
+      // 4. Send notifications
+      try {
+        const { getEventById } = require('./events-functions'); // Ensure we have the full event data
+        const fullEvent = await getEventById(eventId);
+
+        if (fullEvent) {
+          // Notify Client (from System/KushkiPagos)
+          await createSystemMessage(
+            '00000000-0000-0000-0000-000000000000', // System ID for KushkiPagos
+            fullEvent.client_id,
+            'Tu pago al DJ ha sido procesado con éxito por KushkiPagos. Gracias por confirmar.'
+          );
+
+          // Notify DJ (from System/KushkiPagos)
+          await createSystemMessage(
+            '00000000-0000-0000-0000-000000000000', // System ID for KushkiPagos
+            fullEvent.dj_id,
+            'Tu pago fue procesado con éxito por KushkiPagos. Ya lo puedes ver reflejado en tu apartado de mis pagos y eventos.'
+          );
+        }
+      } catch (notifyError) {
+        console.error('⚠️ Error sending confirmation notifications:', notifyError);
+      }
+    }
+
+    return { success: true, bothConfirmed };
+  } catch (e) {
+    console.error('❌ Error in confirmEventRealization:', e);
+    return { success: false, bothConfirmed: false, error: e };
+  }
+}
+
+export async function cancelEvent(eventId: UUID, cancelledBy: 'client' | 'dj'): Promise<boolean> {
   try {
     // Obtener evento para saber client/dj y detalles
-    const ev = await getEventById(id);
+    const ev = await getEventById(eventId);
     if (!ev) {
-      console.warn('⚠️ cancelEvent: evento no encontrado para id=', id);
+      console.warn('⚠️ cancelEvent: evento no encontrado para id=', eventId);
       return false;
     }
 
+    // 1. Actualizar estado del evento
     const { error } = await supabase
       .from('events')
       .update({ estado: 'cancelado', cancelada_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .eq('id', id);
+      .eq('id', eventId);
 
     if (error) {
       console.error('❌ Error cancelando evento:', error);
       return false;
     }
 
-    // Enviar alerta/mensaje al otro participante notificando la cancelación
+    // 2. Manejar Reembolso en tabla 'pagos'
+    try {
+      // Buscar el pago asociado al evento
+      const { data: payment } = await supabase
+        .from('pagos')
+        .select('*')
+        .eq('event_id', eventId)
+        .single();
+
+      if (payment) {
+        let newStatus = 'REFUNDED_FULL';
+        let logMessage = 'Reembolso 100% al cliente (DJ canceló)';
+
+        if (cancelledBy === 'client') {
+          newStatus = 'REFUNDED_PARTIAL';
+          logMessage = 'Reembolso 80% cliente, 10% DJ, 10% Mivok (Cliente canceló)';
+
+          // Aquí podríamos crear registros adicionales para la compensación del DJ
+          // Por ahora, solo marcamos el estado para reflejar que no es un reembolso total
+        }
+
+        const { error: payError } = await supabase
+          .from('pagos')
+          .update({ estado: newStatus })
+          .eq('id', payment.id);
+
+        if (payError) {
+          console.error('❌ Error actualizando estado del pago:', payError);
+        } else {
+          console.log(`✅ Estado de pago actualizado a ${newStatus}: ${logMessage}`);
+        }
+      }
+    } catch (payErr) {
+      console.warn('⚠️ Error gestionando reembolso:', payErr);
+    }
+
+    // 3. Notificar
     try {
       const current = await getCurrentUser();
       const actorId = current?.id || null;
@@ -259,5 +370,24 @@ export async function finalizeCompletedEvents(userId: UUID, role: 'client' | 'dj
     }
   } catch (e) {
     console.error('❌ Error en finalizeCompletedEvents:', e);
+  }
+}
+
+export async function deleteEvent(id: UUID): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('events')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('❌ Error eliminando evento:', error);
+      return false;
+    }
+
+    return true;
+  } catch (e) {
+    console.error('❌ Error en deleteEvent:', e);
+    return false;
   }
 }

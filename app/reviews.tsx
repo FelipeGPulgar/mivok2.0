@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BottomNavBar from '../components/BottomNavBar';
 import type { ReviewRow } from '../lib/db-types';
-import { createReview, listReviewsForUser } from '../lib/reviews-functions';
+import { checkExistingReview, createReview, listReviewsForUser } from '../lib/reviews-functions';
 import { useRole } from '../lib/RoleContext';
 import { getCurrentUser } from '../lib/supabase';
 
@@ -33,9 +33,9 @@ export default function ResenasScreen() {
   // Determine mode from params - if mode is explicitly 'client', force client mode
   // If mode is 'dj', force DJ mode
   // Otherwise, use isDJ but prioritize explicit client mode
-  const isDJMode = params.mode === 'dj' && params.mode !== 'client' ? true : 
-                   params.mode === 'client' ? false : 
-                   (isDJ && params.mode !== 'client');
+  const isDJMode = params.mode === 'dj' ? true :
+    params.mode === 'client' ? false :
+      (isDJ && params.mode !== 'client');
 
   // Debug logging
   console.log('🎯 ResenasScreen - isDJ:', isDJ, 'params.mode:', params.mode, 'isDJMode:', isDJMode, 'isLoading:', isLoading);
@@ -76,20 +76,39 @@ export default function ResenasScreen() {
 
   // Si vienen parámetros para crear reseña
   useEffect(() => {
-    const eventId = params.eventId as string;
-    const revieweeId = params.revieweeId as string;
-    const revieweeName = params.revieweeName as string;
+    const checkAndShowForm = async () => {
+      const eventId = params.eventId as string;
+      const revieweeId = params.revieweeId as string;
+      const revieweeName = params.revieweeName as string;
 
-    if (eventId && revieweeId && revieweeName) {
-      setFormData({
-        eventId,
-        revieweeId,
-        revieweeName,
-        calificacion: 5,
-        resena: '',
-      });
-      setShowForm(true);
-    }
+      if (eventId && revieweeId && revieweeName) {
+        try {
+          const user = await getCurrentUser();
+          if (user) {
+            const exists = await checkExistingReview(eventId, user.id);
+            if (exists) {
+              Alert.alert('Aviso', 'Ya has dejado una reseña para este evento.');
+              // Clear params to prevent loop if we were to navigate back and forth
+              router.setParams({ eventId: '', revieweeId: '', revieweeName: '' });
+              return;
+            }
+          }
+
+          setFormData({
+            eventId,
+            revieweeId,
+            revieweeName,
+            calificacion: 5,
+            resena: '',
+          });
+          setShowForm(true);
+        } catch (e) {
+          console.error('Error checking existing review:', e);
+        }
+      }
+    };
+
+    checkAndShowForm();
   }, [params.eventId, params.revieweeId, params.revieweeName]);
 
   const handleSubmitReview = async () => {

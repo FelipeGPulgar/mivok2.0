@@ -128,16 +128,16 @@ export default function ApartadoDJScreen() {
 
   const handleLogout = async () => {
     try {
+      // Intentar cerrar sesión en el servidor
       const { error } = await supabase.auth.signOut();
       if (error) {
-        Alert.alert('Error', 'No se pudo cerrar sesión');
-        console.error('Error signing out:', error);
-      } else {
-        router.replace('/bienvenida' as any);
+        console.warn('⚠️ Error al cerrar sesión en servidor (posible problema de red):', error);
       }
     } catch (error) {
-      console.error('Error en handleLogout:', error);
-      Alert.alert('Error', 'Ocurrió un error inesperado');
+      console.error('❌ Excepción en handleLogout:', error);
+    } finally {
+      // Siempre redirigir a bienvenida, incluso si falla la red
+      router.replace('/bienvenida' as any);
     }
   };
 
@@ -184,8 +184,8 @@ export default function ApartadoDJScreen() {
     },
     {
       icon: <Ionicons name="card" size={24} color="#666" />,
-      text: 'Métodos de Pago',
-      onPress: () => Alert.alert('Próximamente', 'Gestiona tus métodos de pago'),
+      text: 'Mis Pagos y Eventos',
+      onPress: () => router.push('/mis-pagos-dj'),
     },
     {
       icon: <Ionicons name="settings" size={24} color="#666" />,
@@ -434,11 +434,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#1a1a1a',
   },
-  avatarImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-  },
+
   profileInfo: {
     flex: 1,
   },

@@ -1,19 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Platform } from 'react-native';
 import { useRole } from '../lib/RoleContext';
 import {
     ActivityIndicator,
     Alert,
-    Modal,
-    SafeAreaView,
+    Modal, Platform, SafeAreaView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import * as proposalsFn from '../lib/proposals-functions';
 
 // Las credenciales se cargan desde `secrets.local.ts` (no versionado). Si no existe,
 // el flujo avisará para que pegues tu token de prueba.
@@ -34,19 +34,51 @@ try {
 export default function PagoMercadoPagoScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
-    const { monto, nombreEvento } = params;
+    const { monto, nombreEvento, eventId } = params;
     const [loading, setLoading] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
     const [webviewVisible, setWebviewVisible] = useState(false);
     const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
     const { isDJ, isLoading: roleLoading } = useRole();
+    // Display values (fall back to params, or loaded proposal)
+    const [displayMonto, setDisplayMonto] = useState<number | null>(monto ? Number(monto) : null);
+    const [displayNombreEvento, setDisplayNombreEvento] = useState<string | null>(nombreEvento ? String(nombreEvento) : null);
+    const [displayProposalDetails, setDisplayProposalDetails] = useState<any | null>(null);
+    // Allow forcing the Pay button enabled for testing via local secrets (MP_FORCE_PAY = true)
+    let forcePay = false;
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        // @ts-ignore
+        const _s = require('../secrets.local');
+        forcePay = _s.MP_FORCE_PAY === true || _s.MP_FORCE_PAY === 'true';
+    } catch (e) {
+        // ignore
+    }
+    // Allow forcing role for testing: MP_FORCE_ROLE = 'client' | 'dj'
+    let forceRole: string | null = null;
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        // @ts-ignore
+        const _s2 = require('../secrets.local');
+        if (_s2.MP_FORCE_ROLE) forceRole = String(_s2.MP_FORCE_ROLE).toLowerCase();
+    } catch (e) {
+        // ignore
+    }
 
+    // Compute effective role: respect any override, otherwise use role context
+    const effectiveIsDJ = (() => {
+        if (forceRole === 'client') return false;
+        if (forceRole === 'dj') return true;
+        // if roleLoading true and isDJ is null, assume client for better UX (so pay button shows)
+        if (roleLoading || typeof isDJ === 'undefined' || isDJ === null) return false;
+        return !!isDJ;
+    })();
     const createPreference = async () => {
-        setLoading(true);
         console.log('🚀 Iniciando creación de preferencia...');
         try {
-            const unitPrice = monto ? Number(monto) : 1000;
-            const title = nombreEvento ? String(nombreEvento) : 'Servicio Mivok (Pago Cliente)';
+            // Use display values which may be loaded from proposal if params were missing
+            const unitPrice = displayMonto !== null ? Number(displayMonto) : (monto ? Number(monto) : 1000);
+            const title = displayNombreEvento || (nombreEvento ? String(nombreEvento) : 'Servicio Mivok (Pago Cliente)');
 
             console.log('📦 Datos:', { unitPrice, title });
 
@@ -57,38 +89,64 @@ export default function PagoMercadoPagoScreen() {
             // @ts-ignore
             const localSecrets = require('../secrets.local');
             let serverUrl = localSecrets.MP_SERVER_URL || 'http://localhost:3000';
-            // Si estamos en Android emulator, reemplazamos localhost por 10.0.2.2
-            if (Platform.OS === 'android' && serverUrl.includes('localhost')) {
-                serverUrl = serverUrl.replace('localhost', '10.0.2.2');
+            console.log('🔧 Using MP server URL (raw):', localSecrets.MP_SERVER_URL);
+
+            // Build candidate URLs to try (helps iOS simulator, Android emulator, physical devices)
+            const candidates: string[] = [];
+            candidates.push(serverUrl);
+            if (serverUrl.includes('localhost')) {
+                candidates.push(serverUrl.replace('localhost', '127.0.0.1'));
+                // Android emulator mapping
+                candidates.push(serverUrl.replace('localhost', '10.0.2.2'));
+            }
+            // Ensure unique
+            const uniqueCandidates = Array.from(new Set(candidates));
+            console.log('🔧 Candidate server URLs:', uniqueCandidates);
+
+            const fetchWithTimeout = (url: string, opts: any, ms = 4000) => {
+                return Promise.race([
+                    fetch(url, opts),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))
+                ]);
+            };
+
+            let lastError: any = null;
+            let response: Response | null = null;
+            for (const candidate of uniqueCandidates) {
+                try {
+                    console.log('🔧 Trying candidate:', candidate);
+                    response = (await fetchWithTimeout(`${candidate}/create_preference`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            items: [ { id: '1234', title: title, quantity: 1, currency_id: 'CLP', unit_price: unitPrice } ],
+                            payer: { email: 'TESTUSER330557785022387793@testuser.com' },
+                            binary_mode: false,
+                            back_urls: { success: 'https://www.google.com', failure: 'https://www.google.com', pending: 'https://www.google.com' },
+                            auto_return: 'approved'
+                        })
+                    }, 4000)) as Response;
+
+                    if (response && (response.ok || response.status)) {
+                        console.log('🔧 Candidate responded:', candidate, response.status);
+                        serverUrl = candidate;
+                        break;
+                    }
+                } catch (err) {
+                    lastError = err;
+                    console.warn('🔧 Candidate failed:', candidate, err && err.message ? err.message : err);
+                }
             }
 
-            const response = await fetch(`${serverUrl}/create_preference`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    items: [
-                        {
-                            id: '1234',
-                            title: title,
-                            quantity: 1,
-                            currency_id: 'CLP',
-                            unit_price: unitPrice
-                        }
-                    ],
-                    payer: {
-                        email: 'TESTUSER330557785022387793@testuser.com'
-                    },
-                    binary_mode: false,
-                    back_urls: {
-                        success: 'https://www.google.com',
-                        failure: 'https://www.google.com',
-                        pending: 'https://www.google.com'
-                    },
-                    auto_return: 'approved'
-                })
-            });
+            if (!response) {
+                console.error('Error: could not reach any MP server candidate', lastError);
+                if (Platform.OS === 'ios' && Constants.isDevice && (localSecrets.MP_SERVER_URL || '').includes('localhost')) {
+                    Alert.alert('Error de red', 'No se pudo conectar al servidor de pruebas. En iPhone físico no funciona "localhost" — actualiza `MP_SERVER_URL` en `secrets.local.ts` con la IP LAN de tu máquina (ej. http://192.168.1.84:3000).');
+                } else {
+                    Alert.alert('Error de red', 'No se pudo conectar al servidor de pruebas. Revisa que el servidor esté en ejecución y que el teléfono pueda alcanzarlo. Comprueba la IP/puerto en `secrets.local.ts`.');
+                }
+                return;
+            }
 
             console.log('📡 Respuesta status:', response.status);
             const data = await response.json();
@@ -124,6 +182,29 @@ export default function PagoMercadoPagoScreen() {
         }
     };
 
+    // If params didn't include monto/nombreEvento but include eventId, try to load proposal details
+    React.useEffect(() => {
+        let mounted = true;
+        const loadProposal = async () => {
+            try {
+                if ((!monto || !nombreEvento) && eventId) {
+                    console.log('🔎 Cargando propuesta por eventId:', eventId);
+                    const prop = await proposalsFn.getProposalById(String(eventId));
+                    if (prop && mounted) {
+                        console.log('✅ Propuesta cargada:', prop);
+                        setDisplayMonto(prop.monto || Number(prop.monto_contraoferta) || null);
+                        setDisplayNombreEvento(prop.detalles || `Evento ${prop.id}`);
+                        setDisplayProposalDetails(prop);
+                    }
+                }
+            } catch (e) {
+                console.warn('⚠️ No se pudo cargar propuesta desde eventId:', e);
+            }
+        };
+        loadProposal();
+        return () => { mounted = false; };
+    }, [eventId, monto, nombreEvento]);
+
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
@@ -139,18 +220,31 @@ export default function PagoMercadoPagoScreen() {
             <View style={styles.content}>
                 <View style={styles.card}>
                     <Text style={styles.label}>Total a Pagar</Text>
-                    <Text style={styles.price}>${monto ? Number(monto).toLocaleString('es-CL') : '1.000'} CLP</Text>
+                    <Text style={styles.price}>${displayMonto !== null ? Number(displayMonto).toLocaleString('es-CL') : '1.000'} CLP</Text>
                     <Text style={styles.note}>(Monto acordado)</Text>
 
                     <View style={styles.divider} />
 
-                    <Text style={styles.description}>{nombreEvento || 'Servicio DJ'}</Text>
+                    <Text style={styles.description}>{displayNombreEvento || 'Servicio DJ'}</Text>
+                    {displayProposalDetails ? (
+                        <View style={{ marginTop: 12, width: '100%' }}>
+                            {displayProposalDetails.horas && (
+                                <Text style={{ color: '#bbb' }}>Duración: {displayProposalDetails.horas} horas</Text>
+                            )}
+                            {displayProposalDetails.fecha_evento && (
+                                <Text style={{ color: '#bbb' }}>Fecha: {displayProposalDetails.fecha_evento}</Text>
+                            )}
+                            {displayProposalDetails.ubicacion_evento && (
+                                <Text style={{ color: '#bbb' }}>Ubicación: {displayProposalDetails.ubicacion_evento}</Text>
+                            )}
+                        </View>
+                    ) : null}
                 </View>
 
                 <TouchableOpacity
-                    style={[styles.payButton, (loading || roleLoading || isDJ) ? { opacity: 0.6 } : null]}
+                    style={[styles.payButton, (loading || roleLoading || (effectiveIsDJ && !forcePay) || displayMonto === null) ? { opacity: 0.6 } : null]}
                     onPress={createPreference}
-                    disabled={loading || roleLoading || !!isDJ}
+                    disabled={loading || roleLoading || ((effectiveIsDJ && !forcePay) || displayMonto === null)}
                 >
                     {loading ? (
                         <ActivityIndicator color="#fff" />
@@ -162,7 +256,7 @@ export default function PagoMercadoPagoScreen() {
                     )}
                 </TouchableOpacity>
 
-                {isDJ ? (
+                {effectiveIsDJ ? (
                     <Text style={[styles.secureText, { color: '#f66', marginTop: 8 }]}>Los DJs no pueden pagar por servicios. Inicia sesión como cliente para realizar pagos.</Text>
                 ) : null}
 

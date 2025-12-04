@@ -127,6 +127,8 @@ export interface EventRow {
   created_at: string;
   updated_at: string;
   cancelada_at: string | null;
+  dj_confirmed_at: string | null;
+  client_confirmed_at: string | null;
 }
 
 // ---------- reviews ----------
@@ -140,4 +142,18 @@ export interface ReviewRow {
   aspectos: any | null; // jsonb
   created_at: string;
   updated_at: string;
+}
+
+// ---------- pagos (Kushki Mock) ----------
+export interface PagoRow {
+  id: UUID;
+  token: string | null;
+  monto: number | null;
+  dj_id: UUID | null;
+  client_id: UUID | null;
+  event_id: UUID | null;
+  proposal_id: UUID | null;
+  estado: string | null; // 'EN_ESCROW', 'PAGADO', etc.
+  es_mock: boolean | null;
+  created_at: string;
 }

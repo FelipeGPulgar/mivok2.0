@@ -1,5 +1,5 @@
-import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, Modal, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import BottomNavBar from '../components/BottomNavBar';
@@ -37,9 +37,11 @@ export default function EventosDJScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchEvents();
+    }, [fetchEvents])
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -153,18 +155,18 @@ export default function EventosDJScreen() {
     }
 
     Alert.alert(
-      '¿Estás seguro que quieres cancelar el evento?',
-      'Esta acción marcará el evento como cancelado y no puede revertirse desde la app. ¿Deseas continuar?',
+      '¿Cancelar evento?',
+      'Si cancelas el evento, se reembolsará el 100% del dinero al cliente.\n\n¿Estás seguro de continuar?',
       [
         { text: 'No, mantener evento', style: 'cancel' },
         {
-          text: 'Sí, cancelar',
+          text: 'Sí, cancelar evento',
           style: 'destructive',
           onPress: async () => {
             try {
-              const ok = await cancelEvent(selected.id);
+              const ok = await cancelEvent(selected.id, 'dj');
               if (ok) {
-                Alert.alert('Evento cancelado', 'El evento ha quedado marcado como cancelado.');
+                Alert.alert('Evento cancelado', 'El evento ha sido cancelado y el reembolso total procesado.');
                 closeOptions();
                 await fetchEvents();
               } else {
@@ -190,7 +192,7 @@ export default function EventosDJScreen() {
         data={events}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
-        contentContainerStyle={[styles.listContent, events.length === 0 && { flex: 1 } ]}
+        contentContainerStyle={[styles.listContent, events.length === 0 && { flex: 1 }]}
         ListEmptyComponent={!loading ? empty : null}
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.card} activeOpacity={0.9} onPress={() => openOptions(item)}>
@@ -252,20 +254,23 @@ export default function EventosDJScreen() {
 
             {selected?.estado === 'completado' && (
               <TouchableOpacity
-                style={styles.secondaryAction}
+                style={[styles.secondaryAction, { backgroundColor: '#5B7EFF' }]}
                 onPress={() => {
                   closeOptions();
                   router.push({
-                    pathname: '/reviews',
+                    pathname: '/event-confirmation',
                     params: {
                       eventId: selected.id,
-                      revieweeId: selected.client_id,
-                      revieweeName: 'Cliente',
-                    },
+                      monto: selected.monto_final,
+                      role: 'dj',
+                      nombreEvento: selected.ubicacion || 'Evento',
+                    }
                   });
                 }}
               >
-                <Text style={styles.secondaryActionText}>Dejar reseña al cliente</Text>
+                <Text style={styles.secondaryActionText}>
+                  {selected.dj_confirmed_at ? 'Ver estado de confirmación' : 'Confirmar realización evento'}
+                </Text>
               </TouchableOpacity>
             )}
 
@@ -298,7 +303,7 @@ export default function EventosDJScreen() {
       <BottomNavBar
         activeTab="eventos"
         onHomePress={() => router.push('/home-dj')}
-        onEventosPress={() => {}}
+        onEventosPress={() => { }}
         onSearchPress={() => router.push('/chats-dj')}
         onAlertasPress={() => router.push('/alertas-dj')}
         onMasPress={() => router.push('/apartadodj')}

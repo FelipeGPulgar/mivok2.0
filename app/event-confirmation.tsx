@@ -1,0 +1,345 @@
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { confirmEventRealization } from '../lib/events-functions';
+import { supabase } from '../lib/supabase';
+
+export default function EventConfirmationScreen() {
+  const router = useRouter();
+  const params = useLocalSearchParams();
+  const [confirmed, setConfirmed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
+
+  const eventId = params.eventId as string;
+  const monto = params.monto ? Number(params.monto) : 0;
+  const role = (params.role as 'client' | 'dj') || 'client';
+  const nombreEvento = params.nombreEvento || 'Evento';
+
+  // Check if already confirmed on mount
+  React.useEffect(() => {
+    const checkStatus = async () => {
+      if (!eventId) return;
+      try {
+        const { getEventById } = require('../lib/events-functions'); // Lazy import to avoid cycle if any
+        const ev = await getEventById(eventId);
+        if (ev) {
+          // Si el evento ya está completado (ambos confirmaron), redirigir o mostrar estado final
+          if (ev.estado === 'completado') {
+            Alert.alert(
+              '✅ Evento ya confirmado',
+              'Este evento ya ha sido confirmado por ambas partes.',
+              [
+                {
+                  text: role === 'dj'
+                    ? (paymentStatus === 'LIBERADO' ? 'Ver Comprobante' : 'Gestionar Pago (Kushki)')
+                    : 'Ver resumen',
+                  onPress: () => {
+                    if (role === 'dj') {
+                      if (paymentStatus === 'LIBERADO') {
+                        router.push('/mis-pagos-dj');
+                      } else {
+                        router.push({
+                          pathname: '/kushki-chat',
+                          params: { eventId, monto }
+                        });
+                      }
+                    } else {
+                      router.replace({
+                        pathname: '/payment-result',
+                        params: {
+                          tipo: 'liberado',
+                          monto,
+                          porcentajeDJ: 100,
+                          porcentajeCliente: 0,
+                          motivo: 'Evento completado exitosamente',
+                          role,
+                        }
+                      });
+                    }
+                  },
+                }
+              ]
+            );
+            return;
+          }
+
+          const myConfirmation = role === 'client' ? ev.client_confirmed_at : ev.dj_confirmed_at;
+          if (myConfirmation) {
+            setConfirmed(true);
+          }
+
+          // Check payment status
+          if (role === 'dj') {
+            const { data: payment } = await supabase
+              .from('pagos')
+              .select('estado')
+              .eq('event_id', eventId)
+              .single();
+            if (payment) {
+              setPaymentStatus(payment.estado);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error checking status:', e);
+      }
+    };
+    checkStatus();
+  }, [eventId, role]);
+
+  const handleConfirm = async () => {
+    if (loading) return;
+    setLoading(true);
+
+    try {
+      const { success, bothConfirmed, error } = await confirmEventRealization(eventId, role);
+
+      if (!success) {
+        Alert.alert('Error', 'No se pudo confirmar el evento. Inténtalo de nuevo.');
+        setLoading(false);
+        return;
+      }
+
+      if (bothConfirmed) {
+        // Ambos confirman: 100% al DJ
+        Alert.alert(
+          '✅ Evento confirmado',
+          `Ambas partes han confirmado el evento.\n\n💰 Pago liberado:\n• DJ recibe: $ ${monto.toLocaleString('es-CL')} (100%)\n• Cliente: Pago completado\n\n${role === 'dj' ? 'Debes ingresar tus datos bancarios en el portal seguro.' : 'El pago será transferido en 1 día hábil.'}`,
+          [
+            {
+              text: role === 'dj' ? 'Ir a Portal Seguro (Kushki)' : 'Ver resumen',
+              onPress: () => {
+                if (role === 'dj') {
+                  router.replace({
+                    pathname: '/kushki-chat',
+                    params: { eventId, monto }
+                  });
+                } else {
+                  router.replace({
+                    pathname: '/payment-result',
+                    params: {
+                      tipo: 'liberado',
+                      monto,
+                      porcentajeDJ: 100,
+                      porcentajeCliente: 0,
+                      motivo: 'Ambas partes confirmaron el evento',
+                      role,
+                    }
+                  });
+                }
+              },
+            },
+            {
+              text: 'Cerrar',
+              onPress: () => {
+                if (role === 'dj') {
+                  router.replace('/eventos-dj');
+                } else {
+                  router.replace('/eventos-cliente');
+                }
+              }
+            }
+          ]
+        );
+      } else {
+        setConfirmed(true); // Mark as confirmed locally to show waiting UI
+        Alert.alert(
+          '✅ Confirmación registrada',
+          'Tu confirmación ha sido registrada. El pago se liberará automáticamente cuando la otra parte también confirme.',
+          [{
+            text: 'OK',
+            onPress: () => {
+              // Optional: navigate back or stay on screen showing "Waiting"
+              // For now, let's stay to show the waiting UI
+            }
+          }]
+        );
+      }
+    } catch (e) {
+      console.error('Error confirming:', e);
+      Alert.alert('Error', 'Ocurrió un error inesperado.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReject = () => {
+    Alert.alert(
+      '⚠️ Reportar problema',
+      '¿Cuál es el motivo del problema?',
+      [
+        {
+          text: 'Cliente canceló',
+          onPress: () => {
+            // Cliente cancela: 80% devolución cliente, 20% DJ
+            const montoCliente = Math.round(monto * 0.8);
+            const montoDJ = monto - montoCliente;
+
+            Alert.alert(
+              '💰 Devolución procesada',
+              `Cancelación por parte del cliente.\n\nDevolución:\n• Cliente recibe: $ ${montoCliente.toLocaleString('es-CL')} (80%)\n• DJ recibe: $ ${montoDJ.toLocaleString('es-CL')} (20%)\n\nSe enviará un resumen por correo.`,
+              [
+                {
+                  text: 'Ver resumen',
+                  onPress: () => router.replace({
+                    pathname: '/payment-result',
+                    params: {
+                      tipo: 'devolucion_cliente',
+                      monto,
+                      porcentajeDJ: 20,
+                      porcentajeCliente: 80,
+                      motivo: 'Cancelación por parte del cliente',
+                      role,
+                    }
+                  }),
+                },
+                { text: 'Cerrar', onPress: () => router.replace('/eventos-cliente') }
+              ]
+            );
+          },
+        },
+        {
+          text: 'DJ no se presentó',
+          onPress: () => {
+            // DJ cancela: 100% devolución cliente
+            Alert.alert(
+              '💰 Devolución completa',
+              `El DJ no se presentó al evento.\n\nDevolución:\n• Cliente recibe: $ ${monto.toLocaleString('es-CL')} (100%)\n• DJ recibe: $0\n\nSe enviará un resumen por correo.`,
+              [
+                {
+                  text: 'Ver resumen',
+                  onPress: () => router.replace({
+                    pathname: '/payment-result',
+                    params: {
+                      tipo: 'devolucion_dj',
+                      monto,
+                      porcentajeDJ: 0,
+                      porcentajeCliente: 100,
+                      motivo: 'DJ no se presentó al evento',
+                      role,
+                    }
+                  }),
+                },
+                { text: 'Cerrar', onPress: () => router.replace('/eventos-cliente') }
+              ]
+            );
+          },
+        },
+        { text: 'Cancelar', style: 'cancel' },
+      ]
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.title}>
+          {confirmed ? 'Estado de confirmación' : 'Confirmar realización del evento'}
+        </Text>
+        <Text style={styles.subtitle}>{nombreEvento}</Text>
+        <Text style={styles.amount}>Monto: $ {monto.toLocaleString('es-CL')}</Text>
+
+        <View style={styles.infoCard}>
+          <Text style={styles.infoTitle}>¿El evento se realizó correctamente?</Text>
+          <Text style={styles.infoText}>
+            • Si AMBOS confirman: El pago se libera completamente al DJ (100%).
+          </Text>
+          <Text style={styles.infoText}>
+            • Si el CLIENTE cancela: Cliente recibe 80%, DJ recibe 20%.
+          </Text>
+          <Text style={styles.infoText}>
+            • Si el DJ no se presenta: Cliente recibe 100% de devolución.
+          </Text>
+        </View>
+
+        {!confirmed ? (
+          <View style={styles.actions}>
+            <TouchableOpacity style={styles.confirmButton} onPress={handleConfirm}>
+              <Text style={styles.confirmButtonText}>✅ Sí, se realizó correctamente</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.rejectButton} onPress={handleReject}>
+              <Text style={styles.rejectButtonText}>❌ No, hubo un problema</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.waitingCard}>
+            <Text style={styles.waitingText}>⏳ Esperando confirmación de la otra parte...</Text>
+
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => {
+                if (role === 'dj') {
+                  router.replace('/eventos-dj');
+                } else {
+                  router.replace('/eventos-cliente');
+                }
+              }}
+            >
+              <Text style={styles.backButtonText}>Volver a mis eventos</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#111' },
+  content: { padding: 20 },
+  title: { color: '#fff', fontSize: 24, fontWeight: '700', marginBottom: 8, textAlign: 'center' },
+  subtitle: { color: '#5B7EFF', fontSize: 18, fontWeight: '600', marginBottom: 8, textAlign: 'center' },
+  amount: { color: '#FFB800', fontSize: 20, fontWeight: '700', marginBottom: 24, textAlign: 'center' },
+  infoCard: {
+    backgroundColor: '#191919',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+  },
+  infoTitle: { color: '#5B7EFF', fontSize: 16, fontWeight: '700', marginBottom: 12 },
+  infoText: { color: '#bbb', fontSize: 14, marginBottom: 8, lineHeight: 20 },
+  actions: { gap: 12 },
+  confirmButton: {
+    backgroundColor: '#10B981',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  confirmButtonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  rejectButton: {
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+  },
+  rejectButtonText: { color: '#EF4444', fontWeight: '700', fontSize: 16 },
+  waitingCard: {
+    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FFB800',
+  },
+  waitingText: { color: '#FFB800', fontSize: 16, fontWeight: '600', textAlign: 'center' },
+  backButton: {
+    marginTop: 20,
+    backgroundColor: '#333',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    width: '100%',
+    alignItems: 'center',
+  },
+  backButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+});
+

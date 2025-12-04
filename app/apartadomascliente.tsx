@@ -56,18 +56,18 @@ export default function ApartadoMasClienteScreen() {
       if (profile) {
         setUserProfile(profile);
         // Obtener nombre: first_name o email o 'Usuario'
-        const name = profile.first_name?.trim() || 
-                    (profile.email ? profile.email.split('@')[0] : '') || 
-                    'Usuario';
+        const name = profile.first_name?.trim() ||
+          (profile.email ? profile.email.split('@')[0] : '') ||
+          'Usuario';
         setUserName(name);
-        
+
         // Cargar imagen de perfil
         if (profile.foto_url) {
           setProfileImage(profile.foto_url);
         } else {
           setProfileImage(null);
         }
-        
+
         console.log('✅ Perfil del cliente cargado:', { name, hasImage: !!profile.foto_url });
       } else {
         console.log('ℹ️ No se encontró perfil del cliente');
@@ -113,9 +113,11 @@ export default function ApartadoMasClienteScreen() {
               await supabase.auth.signOut();
               // Limpiar bandera local al cerrar sesión
               await AsyncStorage.removeItem(DJ_FLAG_KEY);
-              router.replace('/');
             } catch (error) {
-              console.error('Error al cerrar sesión:', error);
+              console.warn('⚠️ Error al cerrar sesión (posible problema de red):', error);
+            } finally {
+              // Siempre redirigir a bienvenida
+              router.replace('/');
             }
           },
         },
@@ -159,6 +161,11 @@ export default function ApartadoMasClienteScreen() {
       }),
     },
     {
+      icon: <Ionicons name="card-outline" size={24} color="#666" />,
+      text: 'Pagar Servicio',
+      onPress: () => router.push('/pagar-servicios-cliente'),
+    },
+    {
       icon: <Ionicons name="star" size={24} color="#666" />,
       text: 'Mis Reseñas',
       onPress: () => router.push({ pathname: '/reviews', params: { mode: 'client' } }),
@@ -183,8 +190,8 @@ export default function ApartadoMasClienteScreen() {
               >
                 <View style={styles.avatarCircle}>
                   {profileImage ? (
-                    <Image 
-                      source={{ uri: profileImage }} 
+                    <Image
+                      source={{ uri: profileImage }}
                       style={styles.avatarImage}
                     />
                   ) : (

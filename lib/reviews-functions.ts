@@ -115,7 +115,7 @@ export async function listReviewsForUserWithDetails(userId: UUID): Promise<any[]
     console.error('❌ Error en listReviewsForUserWithDetails:', e);
     return [];
   }
-}export async function getAverageRatingForUser(userId: UUID): Promise<number> {
+} export async function getAverageRatingForUser(userId: UUID): Promise<number> {
   try {
     const { data, error } = await supabase
       .from('reviews')
@@ -133,5 +133,25 @@ export async function listReviewsForUserWithDetails(userId: UUID): Promise<any[]
   } catch (e) {
     console.error('❌ Error en getAverageRatingForUser:', e);
     return 0;
+  }
+}
+export async function checkExistingReview(eventId: UUID, reviewerId: UUID): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('id')
+      .eq('event_id', eventId)
+      .eq('reviewer_id', reviewerId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('❌ Error verificando reseña existente:', error);
+      return false;
+    }
+
+    return !!data;
+  } catch (e) {
+    console.error('❌ Error en checkExistingReview:', e);
+    return false;
   }
 }

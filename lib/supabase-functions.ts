@@ -135,7 +135,7 @@ export const getAllActiveDJs = async (): Promise<DJProfile[]> => {
     }
 
     console.log(`✅ DJs cargados de Supabase:`, data?.length, 'DJs encontrados');
-    
+
     return data || [];
   } catch (error) {
     console.error('❌ Error en getAllActiveDJs:', error);
@@ -596,7 +596,7 @@ export const markUserAsDJ = async (userId: string): Promise<boolean> => {
 export const getDJWithDetails = async (userId: string): Promise<any> => {
   try {
     console.log('🔍 Buscando detalles del DJ para user_id:', userId);
-    
+
     // Obtener ambos perfiles en paralelo
     const [userProfileResponse, djProfileResponse] = await Promise.all([
       supabase
@@ -637,15 +637,184 @@ export const getDJWithDetails = async (userId: string): Promise<any> => {
       ...djProfile, // Datos del DJ (ubicación, tarifa, etc.)
     };
 
-    console.log('✅ Datos del DJ combinados:', { 
-      nombre: combinedData.nombre, 
+    console.log('✅ Datos del DJ combinados:', {
+      nombre: combinedData.nombre,
       foto_perfil: combinedData.foto_perfil,
-      ubicacion: combinedData.ubicacion 
+      ubicacion: combinedData.ubicacion
     });
 
     return combinedData;
   } catch (error) {
     console.error('❌ Error en getDJWithDetails:', error);
     return null;
+  }
+};
+
+// ============================================================================
+// WALLET & PAYMENTS
+// ============================================================================
+
+export interface Payment {
+  id: string;
+  token: string;
+  monto: number;
+  dj_id: string;
+  client_id: string;
+  event_id: string;
+  proposal_id: string;
+  estado: string;
+  es_mock: boolean;
+  created_at: string;
+  events?: {
+    fecha: string;
+    ubicacion: string;
+    descripcion: string;
+  };
+  client_profile?: {
+    first_name: string;
+    last_name: string;
+  };
+}
+
+// Obtener pagos de un DJ
+export const getPaymentsForDJ = async (djId: string): Promise<Payment[]> => {
+  try {
+    // 1. Fetch payments first
+    const { data: payments, error } = await supabase
+      .from('pagos')
+      .select('*')
+      .eq('dj_id', djId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('❌ Error obteniendo pagos:', error);
+      return [];
+    }
+
+    if (!payments || payments.length === 0) return [];
+
+    // 2. Fetch client profiles manually
+    const clientIds = [...new Set(payments.map(p => p.client_id))];
+    const { data: profiles } = await supabase
+      .from('user_profiles')
+      .select('user_id, first_name, last_name')
+      .in('user_id', clientIds);
+
+    // 3. Fetch events manually (Robust: check by ID and Proposal ID)
+    const eventIds = [...new Set(payments.map(p => p.event_id).filter(Boolean))];
+    const proposalIds = [...new Set(payments.map(p => p.proposal_id).filter(Boolean))];
+
+    console.log('DEBUG: eventIds:', eventIds);
+    console.log('DEBUG: proposalIds:', proposalIds);
+
+    let events: any[] = [];
+
+    if (eventIds.length > 0 || proposalIds.length > 0) {
+      let query = supabase.from('events').select('id, proposal_id, fecha, ubicacion, descripcion');
+
+      const conditions = [];
+      if (eventIds.length > 0) conditions.push(`id.in.(${eventIds.join(',')})`);
+      if (proposalIds.length > 0) conditions.push(`proposal_id.in.(${proposalIds.join(',')})`);
+
+      console.log('DEBUG: conditions:', conditions);
+
+      if (conditions.length > 0) {
+        const { data, error } = await query.or(conditions.join(','));
+        if (error) console.error('DEBUG: Error fetching events:', error);
+        if (!error && data) {
+          events = data;
+          console.log('DEBUG: Fetched events:', events.length);
+        }
+      }
+    }
+
+    // 4. Merge everything
+    const paymentsWithDetails = payments.map(payment => {
+      const profile = profiles?.find(p => p.user_id === payment.client_id);
+
+      // Try to find event by direct ID match first, then by proposal ID
+      let event = events?.find(e => e.id === payment.event_id);
+      if (!event && payment.proposal_id) {
+        event = events?.find(e => e.proposal_id === payment.proposal_id);
+      }
+
+      return {
+        ...payment,
+        client_profile: profile ? {
+          first_name: profile.first_name,
+          last_name: profile.last_name
+        } : undefined,
+        events: event ? {
+          fecha: event.fecha,
+          ubicacion: event.ubicacion,
+          descripcion: event.descripcion
+        } : undefined
+      };
+    });
+
+    return paymentsWithDetails;
+  } catch (error) {
+    console.error('❌ Error en getPaymentsForDJ:', error);
+    return [];
+  }
+};
+
+// Confirmar realización de evento (Liberar pago)
+export const confirmPaymentEvent = async (paymentId: string): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from('pagos')
+      .update({ estado: 'LIBERADO' })
+      .eq('id', paymentId);
+
+    if (error) {
+      console.error('❌ Error confirmando evento:', error);
+      return false;
+    }
+
+    console.log('✅ Pago liberado');
+    return true;
+  } catch (error) {
+    console.error('❌ Error en confirmPaymentEvent:', error);
+    return false;
+  }
+};
+
+// Obtener propuestas aceptadas sin pago para un cliente
+export const getUnpaidAcceptedProposals = async (clientId: string): Promise<Proposal[]> => {
+  try {
+    // 1. Obtener propuestas aceptadas
+    const { data: proposals, error: proposalsError } = await supabase
+      .from('proposals')
+      .select('*')
+      .eq('client_id', clientId)
+      .eq('estado', 'aceptada');
+
+    if (proposalsError) {
+      console.error('❌ Error obteniendo propuestas aceptadas:', proposalsError);
+      return [];
+    }
+
+    if (!proposals || proposals.length === 0) return [];
+
+    // 2. Obtener pagos existentes para este cliente
+    const { data: payments, error: paymentsError } = await supabase
+      .from('pagos')
+      .select('proposal_id')
+      .eq('client_id', clientId);
+
+    if (paymentsError) {
+      console.error('❌ Error obteniendo pagos:', paymentsError);
+      return []; // Fail safe
+    }
+
+    // 3. Filtrar propuestas que ya tienen pago
+    const paidProposalIds = new Set(payments?.map(p => p.proposal_id));
+    const unpaidProposals = proposals.filter(p => !paidProposalIds.has(p.id));
+
+    return unpaidProposals;
+  } catch (error) {
+    console.error('❌ Error en getUnpaidAcceptedProposals:', error);
+    return [];
   }
 };

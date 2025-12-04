@@ -3,13 +3,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-    Alert,
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
@@ -64,7 +64,7 @@ export default function PerfilScreen() {
       const isDJFlag = isDJRegistered === 'true';
       console.log('🎵 ¿Es DJ (AsyncStorage)?', isDJFlag);
       setIsDJ(isDJFlag);
-      
+
       // 🔥 Cargar imagen de perfil desde Supabase (foto_url)
       const profileData = await profileFunctions.getCurrentProfile();
       if (profileData?.foto_url) {
@@ -165,9 +165,9 @@ export default function PerfilScreen() {
         onPress: () => Alert.alert('Próximamente', 'Funcionalidad en desarrollo'),
       },
       {
-        icon: <Ionicons name="card" size={24} color="#666" />,
-        text: 'Métodos de Pago',
-        onPress: () => Alert.alert('Próximamente', 'Gestiona tus métodos de pago'),
+        icon: <Ionicons name="wallet-outline" size={24} color="#666" />,
+        text: 'Mi Billetera',
+        onPress: () => router.push('/billetera'),
       },
     ] : []),
     {
@@ -186,7 +186,7 @@ export default function PerfilScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView 
+      <ScrollView
         style={styles.scrollContainer}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -195,20 +195,20 @@ export default function PerfilScreen() {
         <View style={styles.profileCardContainer}>
           <View style={styles.profileCard}>
             <View style={styles.profileHeader}>
-              <TouchableOpacity 
-                style={styles.avatarContainer} 
+              <TouchableOpacity
+                style={styles.avatarContainer}
                 disabled={true}
                 activeOpacity={0.7}
               >
                 <View style={styles.avatarCircle}>
                   {profileImage ? (
-                    <Image 
-                      source={{ uri: profileImage }} 
+                    <Image
+                      source={{ uri: profileImage }}
                       style={styles.avatarImage}
                     />
                   ) : (
                     <Svg width={60} height={60} viewBox="0 0 24 24" fill="#5B7EFF">
-                      <Path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                      <Path stroke="none" d="M0 0h24v24H0z" fill="none" />
                       <Path d="M12 2a5 5 0 1 1 -5 5l.005 -.217a5 5 0 0 1 4.995 -4.783z" />
                       <Path d="M14 14a5 5 0 0 1 5 5v1a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-1a5 5 0 0 1 5 -5h4z" />
                     </Svg>
@@ -219,7 +219,7 @@ export default function PerfilScreen() {
                   <Ionicons name="camera" size={14} color="#fff" />
                 </View>
               </TouchableOpacity>
-              
+
               <View style={styles.profileInfo}>
                 <Text style={styles.userName}>{displayName}</Text>
                 <Text style={styles.userSubtitle}>Usuario Premium</Text>
@@ -227,7 +227,7 @@ export default function PerfilScreen() {
             </View>
 
             {/* Edit Profile Button */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.editProfileBtn}
               onPress={() => router.push('/editar-perfil')}
             >
@@ -335,7 +335,7 @@ export default function PerfilScreen() {
       </ScrollView>
 
       {/* Bottom Navigation */}
-      <BottomNavBar 
+      <BottomNavBar
         activeTab={isDJ ? 'apartadomasdj' : 'apartadomascliente'}
         onHomePress={() => router.push(isDJ ? '/home-dj' : '/home-cliente')}
         onEventosPress={() => router.push(isDJ ? '/eventos-dj' : '/eventos-cliente' as any)}

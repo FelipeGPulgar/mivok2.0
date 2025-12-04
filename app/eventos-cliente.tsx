@@ -1,5 +1,5 @@
-import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, Modal, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import BottomNavBar from '../components/BottomNavBar';
@@ -37,9 +37,11 @@ export default function EventosClienteScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchEvents();
+    }, [fetchEvents])
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -155,18 +157,18 @@ export default function EventosClienteScreen() {
 
     // Otherwise, confirm cancellation
     Alert.alert(
-      '¿Estás seguro que quieres cancelar el evento?',
-      'Esta acción marcará el evento como cancelado y no puede revertirse desde la app. ¿Deseas continuar?',
+      '¿Cancelar evento?',
+      'Si cancelas ahora, se te reembolsará solo el 80% del valor pagado (10% compensación DJ, 10% gastos administrativos).\n\n¿Deseas continuar?',
       [
         { text: 'No, mantener evento', style: 'cancel' },
         {
-          text: 'Sí, cancelar',
+          text: 'Sí, cancelar y aceptar penalización',
           style: 'destructive',
           onPress: async () => {
             try {
-              const ok = await cancelEvent(selected.id);
+              const ok = await cancelEvent(selected.id, 'client');
               if (ok) {
-                Alert.alert('Evento cancelado', 'El evento ha quedado marcado como cancelado.');
+                Alert.alert('Evento cancelado', 'El evento ha sido cancelado y el reembolso parcial procesado.');
                 closeOptions();
                 await fetchEvents();
               } else {
@@ -192,7 +194,7 @@ export default function EventosClienteScreen() {
         data={events}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
-        contentContainerStyle={[styles.listContent, events.length === 0 && { flex: 1 } ]}
+        contentContainerStyle={[styles.listContent, events.length === 0 && { flex: 1 }]}
         ListEmptyComponent={!loading ? empty : null}
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.card} activeOpacity={0.9} onPress={() => openOptions(item)}>
@@ -254,21 +256,23 @@ export default function EventosClienteScreen() {
 
             {selected?.estado === 'completado' && (
               <TouchableOpacity
-                style={styles.secondaryAction}
+                style={[styles.secondaryAction, { backgroundColor: '#5B7EFF' }]}
                 onPress={() => {
                   closeOptions();
                   router.push({
-                    pathname: '/reviews',
+                    pathname: '/event-confirmation',
                     params: {
-                      mode: 'client',
                       eventId: selected.id,
-                      revieweeId: selected.dj_id,
-                      revieweeName: 'DJ',
-                    },
+                      monto: selected.monto_final,
+                      role: 'client',
+                      nombreEvento: selected.ubicacion || 'Evento',
+                    }
                   });
                 }}
               >
-                <Text style={styles.secondaryActionText}>Dejar reseña al DJ</Text>
+                <Text style={styles.secondaryActionText}>
+                  {selected.client_confirmed_at ? 'Ver estado de confirmación' : 'Confirmar realización evento'}
+                </Text>
               </TouchableOpacity>
             )}
 
@@ -301,7 +305,7 @@ export default function EventosClienteScreen() {
       <BottomNavBar
         activeTab="eventos"
         onHomePress={() => router.push('/home-cliente')}
-        onEventosPress={() => {}}
+        onEventosPress={() => { }}
         onSearchPress={() => router.push('/chats-cliente')}
         onAlertasPress={() => router.push('/alertas-cliente')}
         onMasPress={() => router.push('/apartadomascliente')}

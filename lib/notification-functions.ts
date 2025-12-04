@@ -153,11 +153,33 @@ export const createSystemMessage = async (
       return null;
     }
 
-    if (currentUid !== senderId) {
+    const SYSTEM_ID = '00000000-0000-0000-0000-000000000000';
+    let senderIdResolved = currentUid;
+
+    // Permitir usar SYSTEM_ID si se proporciona explícitamente
+    if (senderId === SYSTEM_ID) {
+      console.log('🤖 createSystemMessage: Usando SYSTEM_ID explícito');
+      senderIdResolved = SYSTEM_ID;
+
+      // Intentar usar RPC para evitar RLS si existe la función
+      try {
+        const { data: rpcData, error: rpcError } = await supabase.rpc('send_system_message', {
+          p_receiver_id: receiverId,
+          p_content: content
+        });
+
+        if (!rpcError) {
+          console.log('✅ Mensaje de sistema enviado vía RPC');
+          return rpcData;
+        } else {
+          console.warn('⚠️ Falló RPC send_system_message, intentando insert normal:', rpcError.message);
+        }
+      } catch (e) {
+        console.warn('⚠️ Error llamando RPC:', e);
+      }
+    } else if (currentUid !== senderId) {
       console.log('🔐 createSystemMessage: senderId proporcionado no coincide con auth.uid(), usando auth.uid() en su lugar', { provided: senderId, authUid: currentUid });
     }
-
-    const senderIdResolved = currentUid;
 
     const { data, error } = await supabase
       .from('messages')
@@ -330,11 +352,11 @@ export const getActiveChatsList = async (
 
     for (const msg of messages) {
       const otherUserId = msg.sender_id === userId ? msg.receiver_id : msg.sender_id;
-      
+
       if (!chatMap.has(otherUserId)) {
         // Obtener info del otro usuario de user_profiles primero
         let userName = 'Usuario';
-        
+
         const { data: profile } = await supabase
           .from('user_profiles')
           .select('first_name, foto_url')
@@ -364,7 +386,7 @@ export const getActiveChatsList = async (
     }
 
     const result = Array.from(chatMap.values())
-      .sort((a, b) => 
+      .sort((a, b) =>
         new Date(b.last_message_time).getTime() - new Date(a.last_message_time).getTime()
       );
 
