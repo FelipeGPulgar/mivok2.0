@@ -3,13 +3,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    Alert,
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
@@ -74,15 +74,18 @@ export default function PerfilScreen() {
         setProfileImage(null);
       }
 
-      // Cargar nombre del usuario desde Auth
+      // Cargar datos del usuario con fallbacks
+      const userData = await profileFunctions.loadUserDataWithFallbacks();
       const user = await getCurrentUser();
-      if (user) {
-        const displayName = user.user_metadata?.full_name || 'Usuario';
-        // Crear un perfil temporal para mostrar en la UI
-        setUserProfile({
-          first_name: displayName.split(' ')[0],
-          email: user.email,
-        });
+      
+      // Crear un perfil temporal para mostrar en la UI
+      setUserProfile({
+        first_name: userData.name,
+        email: user?.email || '',
+      });
+      
+      if (userData.profileImage) {
+        setProfileImage(userData.profileImage);
       }
     } catch (error) {
       console.error('Error cargando perfil:', error);

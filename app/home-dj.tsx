@@ -30,28 +30,16 @@ export default function HomeDJScreen() {
         console.log('✅ Push notifications registradas en home-dj');
       }
 
-      // Cargar usuario actual
+      // Cargar datos del usuario con fallbacks
+      const userData = await profileFunctions.loadUserDataWithFallbacks();
+      setApodoDJ(userData.name);
+      
+      // Cargar estadísticas si hay usuario
       const user = await getCurrentUser();
       if (user) {
-        // Primero intentar cargar el nombre del perfil DJ desde Supabase
-        try {
-          const djProfile = await profileFunctions.getCurrentProfile();
-          if (djProfile?.first_name) {
-            setApodoDJ(djProfile.first_name.split(' ')[0]);
-            console.log('✅ Nombre del DJ cargado desde Supabase:', djProfile.first_name);
-          } else {
-            // Fallback a user_metadata
-            const userName = user.user_metadata?.full_name?.split(' ')[0] || 'DJ';
-            setApodoDJ(userName);
-          }
-        } catch (error) {
-          // Si hay error cargando desde Supabase, usar user_metadata
-          const userName = user.user_metadata?.full_name?.split(' ')[0] || 'DJ';
-          setApodoDJ(userName);
-        }
-
-        // Cargar ganancias y trabajos
         await cargarEstadisticas(user.id);
+      } else {
+        console.log('ℹ️ Usuario no autenticado en home-dj');
       }
     } catch (error) {
       console.error('❌ Error obteniendo perfil DJ:', error);

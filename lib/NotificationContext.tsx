@@ -67,16 +67,11 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // 🔥 Suscribirse a nuevos mensajes en tiempo real + Polling periódico
   useEffect(() => {
     if (!currentUserId) {
-      console.log('⏳ Esperando currentUserId...');
       return;
     }
 
-    console.log('🔔 Suscribiendo a nuevos mensajes en tiempo real');
-    
     // Suscripción en tiempo real
     const unsubscribe = chatFunctions.subscribeToAllMessages(currentUserId, (newMessage: any) => {
-      console.log('📢 Nuevo mensaje recibido en NotificationContext:', newMessage.id, 'is_read:', newMessage.is_read);
-      
       // Si el mensaje es nuevo y no está leído, incrementar el contador
       if (!newMessage.is_read) {
         console.log('🔴 Incrementando contador (mensaje no leído)');

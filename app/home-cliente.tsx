@@ -6,7 +6,6 @@ import BottomNavBar from '../components/BottomNavBar';
 import { useNotifications } from '../lib/NotificationContext';
 import * as notificationManager from '../lib/notifications';
 import * as profileFunctions from '../lib/profile-functions';
-import { getCurrentUser } from '../lib/supabase';
 
 export default function HomeClienteScreen() {
   const router = useRouter();
@@ -26,50 +25,34 @@ export default function HomeClienteScreen() {
         console.log('✅ Push notifications registradas en home-cliente');
       }
       
-      // Cargar nombre del usuario
-      const user = await getCurrentUser();
-      if (user) {
-        const userName = user.user_metadata?.full_name?.split(' ')[0] || 'Usuario';
-        setApodoCliente(userName);
+      // Cargar datos del usuario con fallbacks
+      const userData = await profileFunctions.loadUserDataWithFallbacks();
+      console.log('✅ Datos del cliente cargados:', userData);
+      setApodoCliente(userData.name);
+      
+      // 🔥 TAMBIÉN SETEAR LA IMAGEN DESDE LOS MISMOS DATOS
+      if (userData.profileImage) {
+        console.log('✅ Imagen de perfil seteada desde userData');
+        setProfileImage(userData.profileImage);
+      } else {
+        console.log('ℹ️ Sin imagen en userData, usando default');
+        setProfileImage('https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop');
       }
     } catch (error) {
       console.error('❌ Error obteniendo perfil:', error);
       setApodoCliente('Usuario');
+      setProfileImage('https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop');
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // Cargar imagen de perfil cada vez que la pantalla recibe foco
+  // Cargar perfil cada vez que la pantalla recibe foco
   useFocusEffect(
     useCallback(() => {
-      const cargarImagenPerfil = async () => {
-        try {
-          // 🔥 CARGAR FOTO DEL USUARIO DESDE SUPABASE (por user_id específico)
-          const user = await getCurrentUser();
-          if (user) {
-            console.log('📸 Cargando foto del usuario:', user.id);
-            const profileData = await profileFunctions.getCurrentProfile();
-            if (profileData?.foto_url) {
-              console.log('✅ Foto cargada desde Supabase:', profileData.foto_url);
-              setProfileImage(profileData.foto_url);
-            } else {
-              console.log('ℹ️ Sin foto en Supabase, usando default');
-              setProfileImage('https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop');
-            }
-          } else {
-            console.log('ℹ️ Usuario no autenticado');
-            setProfileImage(null);
-          }
-        } catch (error) {
-          console.error('Error cargando imagen de perfil:', error);
-        }
-      };
-
       // Cargar perfil y imagen cuando la pantalla recibe foco
       setTimeout(() => {
-        cargarPerfil();
-        cargarImagenPerfil();
+        cargarPerfil(); // Ya incluye la imagen de perfil
       }, 300);
     }, [cargarPerfil])
   );

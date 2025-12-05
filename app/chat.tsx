@@ -23,7 +23,7 @@ import { formatCLP } from '../lib/formatters';
 import * as notificationManager from '../lib/notifications';
 import * as profileFunctions from '../lib/profile-functions';
 import { useRole } from '../lib/RoleContext';
-import { getCurrentUser } from '../lib/supabase';
+import { getCurrentUser, supabase } from '../lib/supabase';
 import * as supabaseFunctions from '../lib/supabase-functions';
 
 const { width } = Dimensions.get('window');
@@ -134,7 +134,7 @@ export default function ChatScreen() {
     if (!currentUser) return;
     
     try {
-      const { data: payments } = await supabaseFunctions.supabase
+      const { data: payments } = await supabase
         .from('pagos')
         .select('proposal_id')
         .eq('client_id', currentUser.id);
@@ -211,16 +211,14 @@ export default function ChatScreen() {
           user = await getCurrentUser();
           setCurrentUser(user);
 
-          // 🔥 CARGAR DATOS DEL USUARIO ACTUAL (nombre e imagen)
+          // 🔥 CARGAR DATOS DEL USUARIO ACTUAL CON FALLBACKS
           if (user) {
-            const userProfile = await profileFunctions.getCurrentProfile();
-            if (userProfile) {
-              console.log('✅ Perfil del usuario actual cargado:', userProfile.first_name);
-              setCurrentUserProfile({
-                name: userProfile.first_name,
-                image: userProfile.foto_url || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop',
-              });
-            }
+            const userData = await profileFunctions.loadUserDataWithFallbacks();
+            console.log('✅ Datos del usuario actual cargados con fallbacks:', userData.name);
+            setCurrentUserProfile({
+              name: userData.name,
+              image: userData.profileImage || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop',
+            });
           }
         } catch (authError) {
           console.warn('⚠️ No se pudo obtener sesión de usuario:', authError);

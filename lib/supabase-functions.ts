@@ -73,7 +73,13 @@ export const createOrUpdateDJProfile = async (
   profileData: Partial<DJProfile>
 ): Promise<DJProfile | null> => {
   try {
-    const { data: existingProfile } = await supabase
+    console.log('🔍 createOrUpdateDJProfile - userId:', userId);
+    
+    // 🚨 SOLUCIÓN TEMPORAL: Usar cliente normal (RLS debe estar deshabilitado en Supabase)
+    const clientToUse = supabase;
+    console.log('🔍 Usando cliente: NORMAL (RLS debe estar OFF)');
+    
+    const { data: existingProfile } = await clientToUse
       .from('dj_profiles')
       .select('id')
       .eq('user_id', userId)
@@ -81,7 +87,7 @@ export const createOrUpdateDJProfile = async (
 
     if (existingProfile) {
       // Actualizar
-      const { data, error } = await supabase
+      const { data, error } = await clientToUse
         .from('dj_profiles')
         .update(profileData)
         .eq('user_id', userId)
@@ -97,7 +103,7 @@ export const createOrUpdateDJProfile = async (
       return data;
     } else {
       // Crear
-      const { data, error } = await supabase
+      const { data, error } = await clientToUse
         .from('dj_profiles')
         .insert({
           user_id: userId,

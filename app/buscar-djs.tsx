@@ -104,7 +104,7 @@ export default function BuscarDJsScreen() {
 
     const loadDJs = async () => {
       try {
-        // Obtener usuario actual
+        // Obtener usuario actual con datos fallback
         const user = await getCurrentUser();
         setCurrentUser(user);
 

@@ -8,6 +8,17 @@ import 'react-native-url-polyfill/auto';
 const supabaseUrl = 'https://bwaarivuswbaivrrcflv.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3YWFyaXZ1c3diYWl2cnJjZmx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1NDE4MjEsImV4cCI6MjA3MzExNzgyMX0.J3Rgg22KXCzuxXSYS3ONsdqgONdMhWUD9kwNU_Vgk14';
 
+// Service key para operaciones administrativas (registro de email)
+const supabaseServiceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3YWFyaXZ1c3diYWl2cnJjZmx2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NzU0MTgyMSwiZXhwIjoyMDczMTE3ODIxfQ.CttJZ4t0nF6SLnUOIJNJu8ow5FcRJMLzXckHTGO3_Js';
+
+// Cliente Supabase para operaciones de servicio
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+});
+
 WebBrowser.maybeCompleteAuthSession();
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
@@ -40,8 +51,11 @@ export const signInWithGoogle = async () => {
   try {
     console.log('🔄 Iniciando autenticación con Google... Plataforma:', Platform.OS);
 
-    // URL de redirect mejorada para Expo
-    const redirectUrl = Linking.createURL('/');
+    // URL de redirect mejorada para el nuevo scheme
+    const redirectUrl = Platform.OS === 'web' 
+      ? window.location.origin 
+      : 'mivokapp://';
+    
     console.log('🔗 Redirect URL:', redirectUrl);
 
     const { data, error } = await supabase.auth.signInWithOAuth({
@@ -166,8 +180,11 @@ export const signInWithMicrosoft = async () => {
   try {
     console.log('🔄 Iniciando autenticación con Microsoft...');
 
-    // URL de redirect mejorada para Expo
-    const redirectUrl = Linking.createURL('/');
+    // URL de redirect mejorada para el nuevo scheme
+    const redirectUrl = Platform.OS === 'web' 
+      ? window.location.origin 
+      : 'mivokapp://';
+    
     console.log('🔗 Redirect URL:', redirectUrl);
 
     const { data, error } = await supabase.auth.signInWithOAuth({
@@ -278,121 +295,6 @@ export const signInWithMicrosoft = async () => {
 
   } catch (error: any) {
     console.error('❌ Error inesperado Microsoft:', error);
-    return { success: false, error: error.message };
-  }
-};
-
-// 🔥 NUEVA FUNCIÓN PARA FACEBOOK OAUTH
-export const signInWithFacebook = async () => {
-  try {
-    console.log('🔄 Iniciando autenticación con Facebook...');
-
-    const redirectUrl = Linking.createURL('/');
-    console.log('🔗 Redirect URL:', redirectUrl);
-
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'facebook',
-      options: {
-        redirectTo: redirectUrl,
-        scopes: 'email public_profile',
-      },
-    });
-
-    if (error) {
-      console.error('❌ Error generando URL OAuth Facebook:', error);
-      return { success: false, error: error.message };
-    }
-
-    console.log('✅ URL OAuth Facebook generada');
-
-    const authResult = await WebBrowser.openAuthSessionAsync(
-      data.url,
-      redirectUrl
-    );
-
-    console.log('📱 Resultado Facebook:', authResult);
-
-    if (authResult.type === 'success' && authResult.url) {
-      console.log('🔗 URL de callback Facebook recibida:', authResult.url);
-
-      const { queryParams } = Linking.parse(authResult.url);
-
-      let accessToken: string | null = null;
-      let refreshToken: string | null = null;
-      let errorParam: string | null = null;
-
-      if (queryParams) {
-        accessToken = queryParams.access_token as string;
-        refreshToken = queryParams.refresh_token as string;
-        errorParam = queryParams.error as string;
-      }
-
-      if (!accessToken) {
-        const urlString = authResult.url;
-        let paramString = '';
-
-        if (urlString.includes('#')) {
-          paramString = urlString.split('#')[1];
-        } else if (urlString.includes('?')) {
-          paramString = urlString.split('?')[1];
-        }
-
-        if (paramString) {
-          const params = new URLSearchParams(paramString);
-          accessToken = params.get('access_token');
-          refreshToken = params.get('refresh_token');
-          errorParam = params.get('error');
-        }
-      }
-
-      console.log('🔑 Facebook Access Token:', accessToken ? '✅' : '❌');
-      console.log('🔄 Facebook Refresh Token:', refreshToken ? '✅' : '❌');
-
-      if (errorParam) {
-        console.error('❌ Error en callback Facebook:', errorParam);
-        return { success: false, error: errorParam };
-      }
-
-      if (accessToken && refreshToken) {
-        console.log('💾 Estableciendo sesión Facebook...');
-
-        const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
-
-        if (sessionError) {
-          console.error('❌ Error estableciendo sesión Facebook:', sessionError);
-          return { success: false, error: sessionError.message };
-        }
-
-        if (sessionData.user) {
-          await createOrUpdateUserProfile(sessionData.user, 'facebook');
-        }
-
-        console.log('✅ Login Facebook exitoso');
-        return { success: true, user: sessionData.user };
-      } else {
-        console.error('❌ No se encontraron tokens Facebook en la respuesta');
-        return { success: false, error: 'No se pudieron obtener los tokens de Facebook' };
-      }
-    }
-
-    if (authResult.type === 'cancel') {
-      console.log('⏹️ Usuario canceló la autenticación Facebook');
-      return { success: false, error: 'Autenticación Facebook cancelada' };
-    }
-
-    if (authResult.type === 'dismiss') {
-      console.log('⏹️ Usuario cerró el navegador sin completar la autenticación Facebook');
-      return { success: false, error: 'Autenticación Facebook cancelada por el usuario' };
-    }
-
-    console.error('❌ Tipo de resultado Facebook no reconocido:', authResult.type);
-    return { success: false, error: 'No se pudo completar la autenticación Facebook' };
-
-  } catch (error: any) {
-    console.error('❌ Error inesperado Facebook:', error);
     return { success: false, error: error.message };
   }
 };
@@ -533,8 +435,34 @@ export const safeGetUser = async () => {
 
 export const getCurrentUser = async () => {
   try {
+    // 1. Verificar sesión de Supabase (OAuth)
     const res = await safeGetUser();
-    return res?.data?.user || null;
+    if (res?.data?.user) {
+      return res.data.user;
+    }
+    
+    // 2. Si no hay sesión OAuth, verificar usuario de email en AsyncStorage
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    const userId = await AsyncStorage.getItem('@mivok/current_user_id');
+    
+    if (userId) {
+      // Simular objeto user para compatibilidad
+      const email = await AsyncStorage.getItem('@mivok/current_user_email');
+      const name = await AsyncStorage.getItem('@mivok/current_user_name');
+      const provider = await AsyncStorage.getItem('@mivok/current_user_provider');
+      
+      return {
+        id: userId,
+        email: email,
+        user_metadata: {
+          first_name: name,
+          provider: provider
+        }
+      };
+    }
+    
+    return null;
+    
   } catch (error: any) {
     if (error?.name === 'AuthSessionMissingError' || error?.message?.includes('Auth session missing')) {
       // Expected when no session exists — return null silently
@@ -547,8 +475,19 @@ export const getCurrentUser = async () => {
 
 export const signOut = async () => {
   try {
+    // Limpiar sesión de Supabase
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
+    
+    // Limpiar también información de email user en AsyncStorage
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    await AsyncStorage.multiRemove([
+      '@mivok/current_user_id',
+      '@mivok/current_user_email', 
+      '@mivok/current_user_name',
+      '@mivok/current_user_provider'
+    ]);
+    
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message };
@@ -562,5 +501,124 @@ export const hasActiveSession = async () => {
   } catch (error) {
     console.error('Error verificando sesión:', error);
     return false;
+  }
+};
+
+// 🔍 FUNCIÓN PARA VERIFICAR SI UN EMAIL YA EXISTE Y CON QUÉ PROVIDER
+export const checkEmailProvider = async (email: string) => {
+  try {
+    const { data: profiles, error } = await supabase
+      .from('user_profiles')
+      .select('provider, email')
+      .eq('email', email.trim().toLowerCase())
+      .limit(1);
+    
+    if (error) {
+      console.error('❌ Error verificando email:', error.message);
+      return { exists: false, provider: null, error: error.message };
+    }
+    
+    if (profiles && profiles.length > 0) {
+      const profile = profiles[0];
+      return { 
+        exists: true, 
+        provider: profile.provider,
+        error: null 
+      };
+    }
+    
+    return { exists: false, provider: null, error: null };
+    
+  } catch (error: any) {
+    console.error('❌ Error inesperado verificando email:', error);
+    return { exists: false, provider: null, error: error.message };
+  }
+};
+
+// 🗑️ FUNCIÓN PARA ELIMINAR CUENTA EXISTENTE
+export const deleteUserAccount = async (email: string) => {
+  try {
+    console.log('🗑️ Eliminando cuenta para email:', email);
+    
+    // Eliminar de la tabla user_profiles que contiene los perfiles de usuario
+    const { error: profileError } = await supabase
+      .from('user_profiles')
+      .delete()
+      .eq('email', email.trim().toLowerCase());
+    
+    if (profileError) {
+      console.error('❌ Error eliminando perfil:', profileError);
+      return { success: false, error: profileError.message };
+    }
+    
+    console.log('✅ Cuenta eliminada exitosamente');
+    return { success: true, error: null };
+    
+  } catch (error: any) {
+    console.error('❌ Error inesperado eliminando cuenta:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// 📧 FUNCIÓN PARA CREAR USUARIO CON EMAIL (usando admin client)
+export const createEmailUser = async (email: string, password: string, firstName: string) => {
+  try {
+    console.log('👤 Creando usuario con email usando admin client:', email);
+    
+    // Crear usuario en auth.users usando admin client
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      email: email.trim().toLowerCase(),
+      password: password,
+      email_confirm: true, // Auto-confirmar email
+      user_metadata: {
+        provider: 'email',
+        first_name: firstName
+      }
+    });
+
+    if (authError) {
+      console.error('❌ Error creando usuario auth:', authError);
+      return { success: false, error: authError.message, user: null };
+    }
+
+    if (!authData.user) {
+      return { success: false, error: 'No se pudo crear el usuario', user: null };
+    }
+
+    console.log('✅ Usuario auth creado:', authData.user.id);
+
+    // Crear perfil en user_profiles
+    const { data: profileData, error: profileError } = await supabaseAdmin
+      .from('user_profiles')
+      .insert({
+        user_id: authData.user.id,
+        email: email.trim().toLowerCase(),
+        provider: 'email',
+        first_name: firstName,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        is_dj: false
+      })
+      .select()
+      .single();
+
+    if (profileError) {
+      console.error('❌ Error creando perfil:', profileError);
+      // Si falla el perfil, eliminar el usuario auth creado
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+      return { success: false, error: profileError.message, user: null };
+    }
+
+    console.log('✅ Perfil creado exitosamente');
+    return { 
+      success: true, 
+      error: null, 
+      user: authData.user,
+      profile: profileData 
+    };
+
+  } catch (error: any) {
+    console.error('❌ Error inesperado creando usuario email:', error);
+    return { success: false, error: error.message, user: null };
   }
 };

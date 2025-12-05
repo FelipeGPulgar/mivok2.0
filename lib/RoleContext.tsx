@@ -41,11 +41,9 @@ export const RoleProvider: React.FC<{ children: React.ReactNode }> = ({
   const checkRole = useCallback(async () => {
     setIsLoading(true);
     try {
-      console.log('🎭 Verificando el modo actual del usuario...');
       const mode = await getCurrentUserMode();
       
       if (mode) {
-        console.log('✅ Modo actual:', mode);
         setCurrentMode(mode);
         setIsDJ(mode === 'dj');
       } else {
@@ -70,15 +68,12 @@ export const RoleProvider: React.FC<{ children: React.ReactNode }> = ({
   // Función para refrescar el modo (sin mostrar loading)
   const refreshMode = useCallback(async () => {
     try {
-      console.log('🔄 Refrescando el modo actual del usuario...');
       const mode = await getCurrentUserMode();
       
       if (mode) {
-        console.log('✅ Modo actualizado:', mode);
         setCurrentMode(mode);
         setIsDJ(mode === 'dj');
       } else {
-        console.log('⚠️ No hay modo configurado, asumiendo cliente');
         setCurrentMode('cliente');
         setIsDJ(false);
       }

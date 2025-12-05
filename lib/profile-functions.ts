@@ -82,6 +82,137 @@ export const getCurrentProfile = async (): Promise<UserProfile | null> => {
 };
 
 /**
+ * 🔥 FUNCIÓN HELPER: Cargar datos de usuario desde múltiples fuentes
+ * Prioridad: OAuth metadata > AsyncStorage session > Database
+ */
+export const loadUserDataWithFallbacks = async (): Promise<{name: string, profileImage: string | null}> => {
+  try {
+    console.log('🔄 loadUserDataWithFallbacks: Iniciando...');
+    const { data: { user }, error } = await safeGetUser();
+    
+    // Si no hay sesión OAuth activa, intentar cargar sesión email desde AsyncStorage
+    if (error || !user) {
+      console.log('🔍 No hay sesión OAuth, buscando sesión email en AsyncStorage...');
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const emailSession = await AsyncStorage.getItem('@mivok/email_user_session');
+        const storedNombre = await AsyncStorage.getItem('@mivok/current_user_name');
+        const storedApodo = await AsyncStorage.getItem('@mivok/current_user_apodo');
+        
+        console.log('🔍 AsyncStorage check:', { 
+          hasEmailSession: !!emailSession, 
+          storedNombre, 
+          storedApodo 
+        });
+        
+        if (emailSession && (storedNombre || storedApodo)) {
+          // Para clientes: usar nombre, para DJs: usar apodo
+          const nameToUse = storedNombre; // Siempre usar el nombre para clientes
+          
+          // 🔥 ARREGLO: Usar clave específica por email para las imágenes
+          let profileImage = null;
+          try {
+            const emailUser = JSON.parse(emailSession);
+            const emailKey = emailUser?.email || 'unknown';
+            const imageKey = `@mivok/profile_image_${emailKey}`;
+            const storedImage = await AsyncStorage.getItem(imageKey);
+            if (storedImage) {
+              profileImage = `data:image/jpeg;base64,${storedImage}`;
+              console.log('📸 Imagen cargada para email:', emailKey);
+            } else {
+              console.log('📸 No hay imagen guardada para email:', emailKey);
+            }
+          } catch (imageError) {
+            console.warn('⚠️ Error cargando imagen desde AsyncStorage:', imageError);
+          }
+          
+          console.log('✅ Datos desde AsyncStorage (email session):', nameToUse);
+          return {
+            name: nameToUse,
+            profileImage: profileImage
+          };
+        }
+      } catch (storageError) {
+        console.warn('⚠️ Error leyendo AsyncStorage:', storageError);
+      }
+      
+      console.log('❌ No hay usuario autenticado ni sesión email');
+      return { name: 'Usuario', profileImage: null };
+    }
+
+    console.log('✅ Usuario encontrado:', user.id);
+
+    // 🔥 ARREGLO: Primero verificar el provider en la BD (fuente de verdad)
+    const profileData = await getCurrentProfile();
+    const dbProvider = profileData?.provider;
+    
+    console.log('🔍 Provider desde BD:', dbProvider, 'vs OAuth metadata provider:', user.app_metadata?.provider);
+    
+    // 1. Si el provider en BD es 'email', usar datos de AsyncStorage (no OAuth metadata)
+    if (dbProvider === 'email') {
+      console.log('📧 Usuario detectado como EMAIL, buscando datos en AsyncStorage...');
+      
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const storedNombre = await AsyncStorage.getItem('@mivok/current_user_name');
+        const storedApodo = await AsyncStorage.getItem('@mivok/current_user_apodo');
+        
+        if (storedNombre) {
+          // 🔥 ARREGLO: Usar clave específica por email para las imágenes
+          let storedImage = null;
+          try {
+            const emailSession = await AsyncStorage.getItem('@mivok/email_user_session');
+            if (emailSession) {
+              const emailUser = JSON.parse(emailSession);
+              const emailKey = emailUser?.email || 'unknown';
+              const imageKey = `@mivok/profile_image_${emailKey}`;
+              storedImage = await AsyncStorage.getItem(imageKey);
+              console.log('📸 Buscando imagen para email:', emailKey, storedImage ? 'encontrada' : 'no encontrada');
+            }
+          } catch (imageError) {
+            console.warn('⚠️ Error cargando imagen:', imageError);
+          }
+          
+          console.log('✅ Datos desde AsyncStorage (usuario email):', storedNombre);
+          return {
+            name: storedNombre,
+            profileImage: storedImage ? `data:image/jpeg;base64,${storedImage}` : (profileData?.foto_url || null)
+          };
+        }
+      } catch (storageError) {
+        console.warn('⚠️ Error leyendo AsyncStorage:', storageError);
+      }
+      
+      // Fallback a datos de BD si no hay AsyncStorage
+      console.log('⚠️ No hay datos en AsyncStorage, usando datos de BD');
+      return {
+        name: profileData?.first_name || 'Usuario',
+        profileImage: profileData?.foto_url || null
+      };
+    }
+    
+    // 2. Si el provider es Google/Microsoft, usar OAuth metadata
+    if (user.user_metadata?.full_name && (dbProvider === 'google' || dbProvider === 'microsoft')) {
+      console.log('✅ Datos desde OAuth metadata:', user.user_metadata.full_name);
+      return {
+        name: user.user_metadata.full_name.split(' ')[0],
+        profileImage: profileData?.foto_url || null
+      };
+    }
+
+    // 3. Fallback final: Datos de la base de datos
+    console.log('⚠️ Fallback a datos de BD');
+    return {
+      name: profileData?.first_name || 'Usuario',
+      profileImage: profileData?.foto_url || null
+    };
+  } catch (error) {
+    console.error('❌ Error en loadUserDataWithFallbacks:', error);
+    return { name: 'Usuario', profileImage: null };
+  }
+};
+
+/**
  * Obtener perfil de cualquier usuario por ID
  */
 export const getUserProfileById = async (userId: string): Promise<UserProfile | null> => {
@@ -115,14 +246,17 @@ export const updateProfile = async (
   updates: Partial<UserProfile>
 ): Promise<UserProfile | null> => {
   try {
+    console.log('🔍 updateProfile llamado con:', updates);
     const { data: { user }, error: authError } = await safeGetUser();
 
     if (authError || !user) {
+      console.error('❌ Error de autenticación en updateProfile:', authError);
       handleAuthError(authError);
       return null;
     }
 
     console.log('🔄 Actualizando perfil para user_id:', user.id);
+    console.log('🔄 Updates a aplicar:', JSON.stringify(updates, null, 2));
 
     // Intentar actualizar primero
     const { data, error } = await supabase
@@ -136,9 +270,12 @@ export const updateProfile = async (
       .single();
 
     if (error) {
-      console.warn('⚠️ Error en UPDATE, intentando UPSERT:', error.message);
+      console.warn('⚠️ Error en UPDATE:', error.message);
+      console.warn('⚠️ Error CODE:', error.code);
+      console.warn('⚠️ Error DETAILS:', error.details);
       
       // Si falla, intentar con upsert
+      console.log('🔄 Intentando UPSERT...');
       const { data: upsertData, error: upsertError } = await supabase
         .from('user_profiles')
         .upsert({
@@ -152,15 +289,18 @@ export const updateProfile = async (
         .single();
 
       if (upsertError) {
+        console.error('❌ Error UPSERT CODE:', upsertError.code);
+        console.error('❌ Error UPSERT MESSAGE:', upsertError.message);
+        console.error('❌ Error UPSERT DETAILS:', upsertError.details);
         try { console.error('❌ Error en UPSERT (detalles):', JSON.stringify(upsertError)); } catch(e) { console.error('❌ Error en UPSERT (no serializable):', upsertError); }
         return null;
       }
 
-      console.log('✅ Perfil actualizado con upsert');
+      console.log('✅ Perfil actualizado con upsert:', upsertData);
       return upsertData;
     }
 
-    console.log('✅ Perfil actualizado');
+    console.log('✅ Perfil actualizado:', data);
     return data;
   } catch (error) {
     console.error('❌ Error en updateProfile:', error);
@@ -199,7 +339,34 @@ export const uploadProfileImage = async (
   try {
     console.log('📤 Iniciando carga de imagen...');
     
-    // Generar un nombre de archivo único para evitar caché
+    // Para usuarios email sin sesión OAuth, guardar en AsyncStorage temporalmente
+    const { data: { user }, error: authError } = await safeGetUser();
+    if (authError || !user) {
+      console.log('⚠️ Sin sesión OAuth, guardando imagen en AsyncStorage...');
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        
+        // 🔥 ARREGLO: Usar clave específica por email
+        const emailSession = await AsyncStorage.getItem('@mivok/email_user_session');
+        if (emailSession) {
+          const emailUser = JSON.parse(emailSession);
+          const emailKey = emailUser?.email || 'unknown';
+          const imageKey = `@mivok/profile_image_${emailKey}`;
+          await AsyncStorage.setItem(imageKey, base64Data);
+          console.log('💾 Imagen guardada en AsyncStorage para email:', emailKey);
+        } else {
+          // Fallback a la clave antigua
+          await AsyncStorage.setItem('@mivok/profile_image_base64', base64Data);
+        }
+        console.log('✅ Imagen guardada en AsyncStorage');
+        return `data:image/jpeg;base64,${base64Data}`; // Retornar data URL para mostrar
+      } catch (storageError) {
+        console.error('❌ Error guardando en AsyncStorage:', storageError);
+        return null;
+      }
+    }
+    
+    // Para usuarios OAuth, intentar subir a Supabase Storage
     const timestamp = Date.now();
     const uniqueFileName = `${fileName}_${timestamp}.jpg`;
     const filePath = `${userId}/${uniqueFileName}`;
@@ -223,8 +390,29 @@ export const uploadProfileImage = async (
       });
 
     if (error) {
-      console.error('❌ Error subiendo imagen:', error);
-      return null;
+      console.error('❌ Error subiendo imagen a Supabase, fallback a AsyncStorage:', error);
+      // Fallback a AsyncStorage si falla Supabase
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        
+        // 🔥 ARREGLO: Usar clave específica por email
+        const emailSession = await AsyncStorage.getItem('@mivok/email_user_session');
+        if (emailSession) {
+          const emailUser = JSON.parse(emailSession);
+          const emailKey = emailUser?.email || 'unknown';
+          const imageKey = `@mivok/profile_image_${emailKey}`;
+          await AsyncStorage.setItem(imageKey, base64Data);
+          console.log('✅ Imagen guardada en AsyncStorage como fallback para email:', emailKey);
+        } else {
+          // Fallback a la clave antigua
+          await AsyncStorage.setItem('@mivok/profile_image_base64', base64Data);
+          console.log('✅ Imagen guardada en AsyncStorage como fallback (clave antigua)');
+        }
+        return `data:image/jpeg;base64,${base64Data}`;
+      } catch (storageError) {
+        console.error('❌ Error en ambos métodos:', storageError);
+        return null;
+      }
     }
 
     // Obtener URL pública del path único

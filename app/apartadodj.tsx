@@ -3,13 +3,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  Alert,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    Alert,
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
@@ -67,20 +67,11 @@ export default function ApartadoDJScreen() {
       const djProfile = await profileFunctions.getCurrentDJProfile();
       console.log('📋 DJ Profile loaded:', djProfile);
 
-      // Also get user profile for name and photo
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: userProfile } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('user_id', user.id)
-          .single();
-
-        console.log('👤 User Profile loaded:', userProfile);
-        setDjProfile({ ...djProfile, userProfile });
-      } else {
-        setDjProfile(djProfile);
-      }
+      // Cargar datos del usuario con fallbacks
+      const userData = await profileFunctions.loadUserDataWithFallbacks();
+      
+      console.log('👤 User data loaded:', userData);
+      setDjProfile({ ...djProfile, userProfile: { first_name: userData.name, foto_url: userData.profileImage } });
     } catch (error) {
       console.error('Error loading profile:', error);
     } finally {

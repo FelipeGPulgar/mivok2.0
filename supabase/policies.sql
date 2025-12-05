@@ -166,4 +166,43 @@ CREATE POLICY "Users can update events"
 --    - Ejecuta el flujo que inserta en `message_notifications` y `events`.
 --    - Confirma en Table Editor que las filas se crean.
 
+-- =====================================================================
+-- dj_profiles (NUEVO - fix para error RLS del registro DJ)
+-- =====================================================================
+-- Habilitar Row Level Security para dj_profiles
+ALTER TABLE IF EXISTS public.dj_profiles ENABLE ROW LEVEL SECURITY;
+
+-- Permitir INSERT si user_id coincide con el usuario autenticado
+DROP POLICY IF EXISTS "Users can create their own DJ profile" ON public.dj_profiles;
+
+CREATE POLICY "Users can create their own DJ profile"
+  ON public.dj_profiles
+  FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+
+-- Permitir SELECT de todos los perfiles DJ activos (para búsqueda pública)
+DROP POLICY IF EXISTS "Anyone can read active DJ profiles" ON public.dj_profiles;
+
+CREATE POLICY "Anyone can read active DJ profiles"
+  ON public.dj_profiles
+  FOR SELECT
+  USING (is_activo = true);
+
+-- Permitir UPDATE solo del propio perfil DJ
+DROP POLICY IF EXISTS "Users can update their own DJ profile" ON public.dj_profiles;
+
+CREATE POLICY "Users can update their own DJ profile"
+  ON public.dj_profiles
+  FOR UPDATE
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+-- Permitir DELETE solo del propio perfil DJ (desactivar cuenta)
+DROP POLICY IF EXISTS "Users can delete their own DJ profile" ON public.dj_profiles;
+
+CREATE POLICY "Users can delete their own DJ profile"
+  ON public.dj_profiles
+  FOR DELETE
+  USING (user_id = auth.uid());
+
 -- Fin de archivo

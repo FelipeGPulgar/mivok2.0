@@ -93,19 +93,33 @@ export default function EditarPerfilScreen() {
             
             setIsDJ(isUserDJ);
 
-            // 🔥 CARGAR FOTO DEL USUARIO DESDE SUPABASE (por usuario específico)
-            const user = await getCurrentUser();
-            if (user) {
-                console.log('📸 Cargando foto de perfil para usuario:', user.id);
-                const profileData = await profileFunctions.getCurrentProfile();
-                if (profileData?.foto_url) {
-                    console.log('✅ Foto cargada desde Supabase:', profileData.foto_url);
-                    setProfileImage(profileData.foto_url);
-                } else {
-                    // Foto por defecto si no tiene
-                    console.log('ℹ️ Sin foto de perfil, usando default');
-                    setProfileImage('https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=600&h=400&fit=crop');
-                }
+            // 🔥 CARGAR DATOS DEL USUARIO CON FALLBACKS
+            const userData = await profileFunctions.loadUserDataWithFallbacks();
+            
+            console.log('🔍 Debug loadUserProfile:', {
+                isUserDJ,
+                userDataName: userData.name,
+                clientNombreAntes: clientNombre,
+                djNombreAntes: djNombre
+            });
+            
+            // Aplicar nombre desde fallbacks según el tipo de usuario
+            if (isUserDJ) {
+                setDjNombre(userData.name);
+                console.log('✅ DJ nombre seteado:', userData.name);
+            } else {
+                setClientNombre(userData.name);
+                console.log('✅ Cliente nombre seteado:', userData.name);
+            }
+            
+            // Si tiene imagen de perfil, usarla
+            if (userData.profileImage) {
+                console.log('✅ Foto cargada desde fallbacks:', userData.profileImage);
+                setProfileImage(userData.profileImage);
+            } else {
+                // Foto por defecto si no tiene
+                console.log('ℹ️ Sin foto de perfil, usando default');
+                setProfileImage('https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=600&h=400&fit=crop');
             }
 
             // Cargar datos del usuario desde Supabase (user_profiles)
@@ -113,7 +127,6 @@ export default function EditarPerfilScreen() {
             if (user2) {
                 // 🔥 CARGAR DATOS DE user_profiles EN LUGAR DE user_metadata
                 const userProfile = await profileFunctions.getCurrentProfile();
-                const displayName = userProfile?.first_name || user2.user_metadata?.full_name || 'Usuario';
                 const email = userProfile?.email || user2.email || '';
 
                 if (isUserDJ) {
@@ -121,7 +134,8 @@ export default function EditarPerfilScreen() {
                     // Cargar perfil DJ existente si hay
                     const djProfile = await getCurrentDJProfile();
                     if (djProfile) {
-                        setDjNombre(displayName);
+                        // NO sobrescribir el nombre que ya se cargó con fallbacks
+                        // setDjNombre(displayName); // ❌ COMENTADO para no sobrescribir
                         setDjDescripcion(djProfile.descripcion_largo || 'Agregá una descripción sobre ti...');
                         setDjTarifa(djProfile.tarifa_por_hora ? String(djProfile.tarifa_por_hora) : '');
                         setDjUbicacion(djProfile.ubicacion || '');
@@ -131,8 +145,8 @@ export default function EditarPerfilScreen() {
                         setCuentaConEquipamiento(djProfile.cuenta_con_equipamiento || 'No');
                         setSelectedEquipamiento(Array.isArray(djProfile.equipamiento) ? djProfile.equipamiento : []);
                     } else {
-                        // Valores por defecto si no existe perfil
-                        setDjNombre(displayName);
+                        // Valores por defecto si no existe perfil (excepto nombre que ya se cargó)
+                        // setDjNombre(displayName); // ❌ COMENTADO para no sobrescribir
                         setDjDescripcion('Agregá una descripción sobre ti...');
                         setDjTarifa('');
                         setDjUbicacion('');
@@ -147,8 +161,8 @@ export default function EditarPerfilScreen() {
                         setGalleryImages(galleryPhotos.map(photo => ({ id: photo.id, url: photo.image_url, isNew: false })));
                     }
                 } else {
-                    // Cargar datos de Cliente
-                    setClientNombre(displayName);
+                    // Cargar datos de Cliente (NO sobrescribir nombre)
+                    // setClientNombre(displayName); // ❌ COMENTADO para no sobrescribir
                     setClientEmail(email);
                 }
             }
@@ -315,7 +329,8 @@ export default function EditarPerfilScreen() {
                     
                     const imageUrl = await profileFunctions.uploadProfileImage(user.id, base64Pure);
                     if (imageUrl) {
-                        console.log('✅ Imagen subida:', imageUrl);
+                        const shortUrl = imageUrl.length > 50 ? imageUrl.substring(0, 50) + '...' : imageUrl;
+                        console.log('✅ Imagen subida:', shortUrl);
                         await profileFunctions.updateProfileImageUrl(imageUrl);
                         setProfileImage(imageUrl); // 🔥 Actualizar el estado con la URL de Supabase
                     }
@@ -327,22 +342,41 @@ export default function EditarPerfilScreen() {
             }
 
             // Guardar datos del perfil en Supabase
-            const success = await profileFunctions.updateProfile({
+            console.log('🔄 Intentando guardar perfil con datos:', { clientNombre, clientEmail });
+            const result = await profileFunctions.updateProfile({
                 first_name: clientNombre,
                 email: clientEmail,
                 is_dj: false,
             });
+            console.log('📊 Resultado de updateProfile:', result ? 'ÉXITO' : 'FALLO');
 
-            if (success) {
-                // Guardar en AsyncStorage también (para cache local)
+            // 🔥 SIEMPRE guardar en AsyncStorage, independientemente de si Supabase funciona
+            try {
                 await AsyncStorage.setItem('@mivok/is_dj_registered', 'false');
+                await AsyncStorage.setItem('@mivok/current_user_name', clientNombre);
+                console.log('💾 Nombre guardado en AsyncStorage:', clientNombre);
                 
-                console.log('✅ Perfil de cliente guardado');
+                // También actualizar la imagen en AsyncStorage si hay una nueva
+                if (profileImage) {
+                    await AsyncStorage.setItem('@mivok/profile_image', profileImage);
+                    console.log('💾 Imagen de perfil actualizada en AsyncStorage');
+                }
+
+                console.log('✅ Datos guardados en AsyncStorage exitosamente');
+            } catch (storageError) {
+                console.error('❌ Error guardando en AsyncStorage:', storageError);
+            }
+
+            if (result) {
+                console.log('✅ Perfil guardado en Supabase Y AsyncStorage');
                 Alert.alert('Éxito', 'Perfil actualizado correctamente', [
                     { text: 'OK', onPress: () => router.back() },
                 ]);
             } else {
-                Alert.alert('Error', 'No se pudo guardar el perfil');
+                console.log('⚠️ Supabase falló, pero AsyncStorage exitoso');
+                Alert.alert('Perfil guardado', 'Tu perfil se guardó localmente correctamente', [
+                    { text: 'OK', onPress: () => router.back() },
+                ]);
             }
         } catch (error) {
             console.error('❌ Error al guardar perfil:', error);
@@ -409,7 +443,8 @@ export default function EditarPerfilScreen() {
                     const base64Pure = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
                     const imageUrl = await profileFunctions.uploadProfileImage(user.id, base64Pure);
                     if (imageUrl) {
-                        console.log('✅ Imagen subida:', imageUrl);
+                        const shortUrl = imageUrl.length > 50 ? imageUrl.substring(0, 50) + '...' : imageUrl;
+                        console.log('✅ Imagen subida:', shortUrl);
                         await profileFunctions.updateProfileImageUrl(imageUrl);
                         setProfileImage(imageUrl); // 🔥 Actualizar el estado con la URL de Supabase
                     }
@@ -450,8 +485,16 @@ export default function EditarPerfilScreen() {
             }
 
             if (djProfileResult) {
-                // Guardar en AsyncStorage también (para cache local)
+                // Guardar en AsyncStorage también (para cache local y usuarios de email)
                 await AsyncStorage.setItem('@mivok/is_dj_registered', 'true');
+                await AsyncStorage.setItem('@mivok/current_user_name', djNombre);
+                console.log('💾 Nombre de DJ guardado en AsyncStorage:', djNombre);
+                
+                // También actualizar la imagen en AsyncStorage si hay una nueva
+                if (profileImage) {
+                    await AsyncStorage.setItem('@mivok/profile_image', profileImage);
+                    console.log('💾 Imagen de perfil de DJ actualizada en AsyncStorage');
+                }
                 
                 // 🔥 Guardar fotos de la galería
                 for (let i = 0; i < galleryImages.length; i++) {
@@ -499,6 +542,7 @@ export default function EditarPerfilScreen() {
     };
 
     const handleSave = () => {
+        console.log('🎯 INICIANDO GUARDADO - isDJ:', isDJ, 'clientNombre:', clientNombre, 'djNombre:', djNombre);
         if (isDJ) {
             saveDJProfile();
         } else {

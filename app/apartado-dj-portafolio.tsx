@@ -53,9 +53,12 @@ export default function ApartadoDJPortafolioScreen() {
         const djFullProfile = await supabaseFunctions.getDJWithDetails(user.id);
         
         if (djFullProfile) {
+          // Cargar datos del usuario con fallbacks
+          const userData = await profileFunctions.loadUserDataWithFallbacks();
+          
           const convertedDJ: DJProfile = {
             id: djFullProfile.user_id,
-            nombre: djFullProfile.nombre || 'DJ Profesional',
+            nombre: userData.name || djFullProfile.nombre || 'DJ Profesional',
             ubicacion: djFullProfile.ubicacion || 'Sin ubicación',
             calificacion: djFullProfile.calificacion || 0,
             resenas: djFullProfile.resenas_count || 0,

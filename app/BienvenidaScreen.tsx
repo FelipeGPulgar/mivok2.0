@@ -227,8 +227,6 @@ export default function Bienvenida() {
         return;
       }
 
-      console.log('🔍 Verificando si usuario es DJ...');
-      
       // 🎭 Establecer modo DJ
       const modeSet = await setCurrentUserMode('dj');
       if (!modeSet) {
@@ -243,11 +241,9 @@ export default function Bienvenida() {
       
       if (djProfile) {
         // Ya está registrado como DJ, ir directo a home-dj
-        console.log('✅ Usuario ya registrado como DJ');
         router.replace('/home-dj');
       } else {
         // No está registrado como DJ, ir al formulario de registro
-        console.log('📝 Usuario no registrado como DJ, mostrar formulario');
         router.push('/registro-dj');
       }
     } catch (error) {
@@ -261,8 +257,6 @@ export default function Bienvenida() {
 
   const handleIniciarBuscarDJ = async () => {
     try {
-      console.log('🔍 Estableciendo modo cliente...');
-      
       // 🎭 Establecer modo cliente
       const modeSet = await setCurrentUserMode('cliente');
       if (!modeSet) {
@@ -272,10 +266,11 @@ export default function Bienvenida() {
         await refreshMode();
       }
       
-      router.replace('/home-cliente');
+      // Ir al formulario de registro de cliente primero
+      router.push('/registro-cliente');
     } catch (error) {
       console.error('❌ Error estableciendo modo cliente:', error);
-      router.replace('/home-cliente');
+      router.push('/registro-cliente');
     }
   };
 

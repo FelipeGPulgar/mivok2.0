@@ -14,7 +14,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { hasActiveSession, signInWithFacebook, signInWithGoogle, signInWithMicrosoft, supabase } from '../lib/supabase';
+import { hasActiveSession, signInWithGoogle, signInWithMicrosoft, supabase } from '../lib/supabase';
 // (No se requiere AsyncStorage ni detección de rol aquí)
 import { useRouter } from 'expo-router';
 
@@ -47,7 +47,6 @@ const gradients: [string, string][] = [
 // Degradados para botones
 const buttonGradients = {
   microsoft: ['#4267B2', '#8b5cf6'] as [string, string],
-  facebook: ['#1877F2', '#4267B2'] as [string, string], // Colores más característicos de Facebook
   google: ['#4285F4', '#34A853'] as [string, string], // Colores más característicos de Google
   login: ['#667eea', '#764ba2', '#f093fb'] as [string, string, string],
   skip: [
@@ -201,6 +200,9 @@ export default function Index() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [showEmailLogin, setShowEmailLogin] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   useEffect(() => {
     let animationTimeout: ReturnType<typeof setTimeout>;
@@ -243,23 +245,21 @@ export default function Index() {
     };
   }, [fadeAnim, isAnimating]);
 
-  // Verificar sesión al cargar la app
+  // Verificar sesión al cargar la app (solo una vez)
   const checkInitialSession = useCallback(async () => {
     try {
       setInitialLoading(true);
-      console.log('🔍 Verificando sesión inicial en plataforma:', Platform.OS);
-
+      
       // Verificar si hay sesión activa
       const sessionExists = await hasActiveSession();
-      console.log('¿Existe sesión inicial?', sessionExists);
 
       if (sessionExists) {
-        console.log('Sesión encontrada, redirigiendo a pantalla de bienvenida...');
+        console.log('✅ Sesión activa encontrada, redirigiendo...');
         router.replace('/bienvenida');
         return;
       }
     } catch (error) {
-      console.error('Error verificando sesión inicial:', error);
+      console.error('❌ Error verificando sesión inicial:', error);
     } finally {
       setInitialLoading(false);
     }
@@ -268,27 +268,21 @@ export default function Index() {
   useEffect(() => {
     checkInitialSession();
 
-    // Escuchar cambios en la autenticación
+    // Escuchar cambios en la autenticación (solo para cambios importantes)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('🔄 Auth state changed:', event, session?.user?.email, 'Plataforma:', Platform.OS);
-
-        if (event === 'SIGNED_IN' && session?.user) {
-          console.log('✅ Usuario autenticado, redirigiendo a pantalla de bienvenida...');
+        // Solo logear eventos importantes
+        if (event === 'SIGNED_IN') {
+          console.log('✅ Usuario autenticado:', session?.user?.email);
           setUser(session.user);
-          // Pequeño delay para asegurar que la sesión esté completamente establecida
           setTimeout(() => {
             router.replace('/bienvenida');
           }, 100);
         } else if (event === 'SIGNED_OUT') {
           console.log('👋 Usuario cerró sesión');
           setUser(null);
-        } else if (event === 'TOKEN_REFRESHED') {
-          console.log('🔄 Token actualizado');
-          if (session?.user) {
-            setUser(session.user);
-          }
         }
+        // Silenciar TOKEN_REFRESHED y otros eventos menos importantes
       }
     );
 
@@ -323,30 +317,6 @@ export default function Index() {
     }
   };
 
-  // FUNCIÓN FACEBOOK LOGIN - NUEVA IMPLEMENTACIÓN
-  const handleFacebookLogin = async () => {
-    if (loading) return;
-    
-    setLoading(true);
-    
-    try {
-      console.log('Iniciando login con Facebook...');
-      const result = await signInWithFacebook();
-      
-      if (result.success) {
-        console.log('Login Facebook exitoso:', result.user?.email);
-        // El estado se actualizará automáticamente por el listener
-      } else {
-        Alert.alert('Error Facebook', result.error || 'No se pudo iniciar sesión con Facebook');
-      }
-    } catch (error) {
-      console.error('Error en Facebook Login:', error);
-      Alert.alert('Error', 'Ocurrió un error inesperado con Facebook');
-    } finally {
-      setLoading(false);
-    }
-  };
-  
   // FUNCIÓN DE GOOGLE LOGIN
   const handleGoogleLogin = async () => {
     if (loading) return;
@@ -488,25 +458,6 @@ export default function Index() {
             </LinearGradient>
           </TouchableOpacity>
 
-          {/* BOTÓN FACEBOOK - FUNCIONAL */}
-          <TouchableOpacity
-            style={[styles.buttonContainer, styles.socialButtonSpacing]}
-            onPress={handleFacebookLogin}
-            disabled={loading}
-          >
-            <LinearGradient
-              colors={buttonGradients.facebook}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[styles.socialButtonRow, loading && { opacity: 0.7 }]}
-            >
-              <Ionicons name="logo-facebook" size={fp(24)} color="#fff" style={styles.socialIconRow} />
-              <Text style={styles.socialButtonTextRow}>
-                {loading ? 'Conectando...' : 'Continuar con Facebook'}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-
           {/* BOTÓN DE GOOGLE */}
           <TouchableOpacity
             style={[styles.buttonContainer, styles.socialButtonSpacing]}
@@ -524,6 +475,32 @@ export default function Index() {
                 {loading ? 'Conectando...' : 'Continuar con Google'}
               </Text>
             </LinearGradient>
+          </TouchableOpacity>
+
+          {/* SEPARADOR */}
+          <View style={styles.separatorContainer}>
+            <View style={styles.separatorLine} />
+            <Text style={styles.separatorText}>o continúa con</Text>
+            <View style={styles.separatorLine} />
+          </View>
+
+          {/* BOTÓN DE EMAIL - Navega a pantalla separada */}
+          <TouchableOpacity
+            style={styles.emailToggleButton}
+            onPress={() => router.push('/login-email')}
+            disabled={loading}
+          >
+            <View style={styles.emailToggleContent}>
+              <Ionicons name="mail-outline" size={fp(20)} color="#667eea" />
+              <Text style={styles.emailToggleText}>
+                Continuar con Email
+              </Text>
+              <Ionicons 
+                name="chevron-forward" 
+                size={fp(16)} 
+                color="#667eea" 
+              />
+            </View>
           </TouchableOpacity>
 
           {/* "Iniciar Sesión" button removed per request */}
@@ -736,5 +713,46 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.3)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+  },
+  // Estilos para formulario de email mejorado
+  separatorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: hp(3),
+    paddingHorizontal: wp(8),
+  },
+  separatorLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  separatorText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: fp(14),
+    marginHorizontal: wp(4),
+    fontWeight: '500',
+  },
+  emailSection: {
+    marginHorizontal: wp(6),
+  },
+  emailToggleButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: wp(4),
+    paddingVertical: hp(1.8),
+    paddingHorizontal: wp(4),
+    borderWidth: 1,
+    borderColor: 'rgba(102, 126, 234, 0.3)',
+  },
+  emailToggleContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  emailToggleText: {
+    color: '#667eea',
+    fontSize: fp(16),
+    fontWeight: '600',
+    flex: 1,
+    marginLeft: wp(3),
   },
 });

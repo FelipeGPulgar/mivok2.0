@@ -3,13 +3,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
+    Alert,
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
@@ -52,36 +52,24 @@ export default function ApartadoMasClienteScreen() {
   // Cargar perfil del usuario
   const loadProfile = useCallback(async () => {
     try {
+      console.log('🔄 Iniciando carga de perfil del cliente...');
+      
+      // Cargar datos del usuario con fallbacks
+      const userData = await profileFunctions.loadUserDataWithFallbacks();
+      console.log('✅ Datos del cliente cargados:', userData);
+      
+      setUserName(userData.name);
+      setProfileImage(userData.profileImage);
+      
+      // También cargar perfil completo para otros datos
       const profile = await profileFunctions.getCurrentProfile();
-      if (profile) {
-        setUserProfile(profile);
-        // Obtener nombre: first_name o email o 'Usuario'
-        const name = profile.first_name?.trim() ||
-          (profile.email ? profile.email.split('@')[0] : '') ||
-          'Usuario';
-        setUserName(name);
-
-        // Cargar imagen de perfil
-        if (profile.foto_url) {
-          setProfileImage(profile.foto_url);
-        } else {
-          setProfileImage(null);
-        }
-
-        console.log('✅ Perfil del cliente cargado:', { name, hasImage: !!profile.foto_url });
-      } else {
-        console.log('ℹ️ No se encontró perfil del cliente');
-        setUserName('Usuario');
-        setProfileImage(null);
-      }
+      setUserProfile(profile);
     } catch (error) {
       console.error('❌ Error cargando perfil del cliente:', error);
       setUserName('Usuario');
       setProfileImage(null);
     }
-  }, []);
-
-  // Cargar perfil cuando la pantalla recibe foco
+  }, []);  // Cargar perfil cuando la pantalla recibe foco
   useFocusEffect(
     useCallback(() => {
       loadProfile();

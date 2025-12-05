@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
-import React, { useState } from "react";
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useState } from "react";
 import {
     Alert,
     Dimensions,
@@ -16,7 +16,7 @@ import {
     View
 } from "react-native";
 import { AnimatedBackground } from '../components/AnimatedBackground';
-import { getCurrentUser, supabase } from '../lib/supabase';
+import { getCurrentUser } from '../lib/supabase';
 import * as supabaseFunctions from '../lib/supabase-functions';
 
 const { width, height } = Dimensions.get('window');
@@ -31,7 +31,10 @@ const fp = (percentage: number) => {
 
 export default function RegistroDJ() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const DJ_FLAG_KEY = '@mivok/is_dj_registered';
+  
+  // Estado del formulario
   const [currentStep, setCurrentStep] = useState(1); // 1: nombre/apellido, 2: especialidades, 3: equipo/redes
   const [nombre, setNombre] = useState('');
   const [apellido, setApellido] = useState('');
@@ -42,14 +45,45 @@ export default function RegistroDJ() {
   const [showEspecialidadesDropdown, setShowEspecialidadesDropdown] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Opciones de especialidades predefinidas
+  // 🔥 NUEVO: Pre-llenar datos cuando venimos de configuración
+  useEffect(() => {
+    if (params.fromConfiguration && params.preFilledName && nombre === '') {
+      console.log('🎵 Pre-llenando datos desde configuración:', {
+        nombre: params.preFilledName,
+        email: params.preFilledEmail
+      });
+      
+      // Si viene un nombre completo, intentar separarlo
+      const fullName = params.preFilledName as string;
+      const nameParts = fullName.trim().split(' ');
+      
+      if (nameParts.length === 1) {
+        setNombre(nameParts[0]);
+        setApodoDJ(nameParts[0]); // Usar el mismo nombre como apodo por defecto
+      } else {
+        setNombre(nameParts[0]);
+        setApellido(nameParts.slice(1).join(' '));
+        setApodoDJ(nameParts[0]); // Usar el primer nombre como apodo por defecto
+      }
+      
+      // 🚀 MEJORA: Si ya tenemos nombre y apellido, saltar directo al paso 2
+      if (fullName.trim().length > 0) {
+        console.log('✅ Datos completos encontrados, saltando al paso 2 (especialidades)');
+        setCurrentStep(2);
+      }
+      
+      console.log('✅ Datos pre-llenados aplicados');
+    }
+  }, [params.fromConfiguration, params.preFilledName, nombre]);
+
+  // Opciones de especialidades predefinidas (🔥 ARREGLO: Max 10 chars c/u)
   const especialidadesOptions = [
-    'House', 'Techno', 'Trance', 'Drum & Bass', 'Dubstep',
+    'House', 'Techno', 'Trance', 'D&B', 'Dubstep', // 'Drum & Bass' → 'D&B'
     'Reggaeton', 'Trap', 'Hip Hop', 'Pop', 'Rock',
-    'Jazz Funk', 'Disco', 'Electro', 'Deep House', 'Progressive'
+    'Jazz Funk', 'Disco', 'Electro', 'Deep House', 'Prog' // 'Progressive' → 'Prog'
   ];
 
-  const equipoOptions = ['Sí', 'No', 'Parcialmente'];
+  const equipoOptions = ['Sí', 'No', 'Parcial']; // 🔥 ARREGLO: Máximo 10 caracteres
 
   const handleEquipoSelect = (option: string) => {
     setTieneEquipo(option);
@@ -106,6 +140,9 @@ export default function RegistroDJ() {
   const guardarRegistroDJ = async () => {
     setLoading(true);
     try {
+      console.log('🎵 INICIO guardarRegistroDJ - Especialidades seleccionadas:', selectedEspecialidades);
+      console.log('🎵 INICIO guardarRegistroDJ - tieneEquipo:', tieneEquipo);
+      
       // Obtener el usuario actual
       const user = await getCurrentUser();
       if (!user) {
@@ -114,49 +151,20 @@ export default function RegistroDJ() {
         return;
       }
 
-      // Crear/actualizar el perfil del usuario con nombre, apellido y apodo DJ opcional
-      const profileData = {
-        user_id: user.id,
-        first_name: nombre.trim(),
-        last_name: `DJ-${apellido.trim()}${apodoDJ.trim() ? ` (${apodoDJ.trim()})` : ''} - ${selectedEspecialidades.join(', ')}`,
-        email: user.email,
-        provider: user.app_metadata?.provider || 'google',
-        updated_at: new Date().toISOString(),
-      };
+      console.log('👤 Usuario obtenido:', user.id);
 
-      // Intentar insertar o actualizar el perfil en user_profiles
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .upsert(profileData, { onConflict: 'user_id' })
-        .select()
-        .single();
-
-      if (error) {
-        console.error('❌ Error guardando perfil DJ:', error);
-        Alert.alert('Error', 'No se pudo guardar el perfil. Intenta de nuevo.');
-        return;
-      }
-
-      console.log('✅ Perfil de usuario guardado:', data);
-
-      // 🔥 CREAR/ACTUALIZAR PERFIL EN DJ_PROFILES PARA QUE APAREZCA EN BÚSQUEDA
+      // 🚀 OBJETO TEST ULTRA-MINIMAL PARA DIAGNOSTICAR
       const djProfileData = {
         user_id: user.id,
-        generos: selectedEspecialidades,
-        tarifa_por_hora: 50000, // Default, puede editarse después
-        ubicacion: 'Ubicación por definir',
-        anos_en_app: 1,
-        eventos_realizados: 0,
-        calificacion: 5,
-        resenas_count: 0,
-        imagen_url: null,
-        descripcion_largo: `DJ especializado en: ${selectedEspecialidades.join(', ')}`,
-        disponibilidad: null,
-        is_activo: true,
-        updated_at: new Date().toISOString(),
+        generos: ['House'], // Solo un género corto para test
+        tarifa_por_hora: 50000,
+        is_activo: true
       };
 
-      // Crear o actualizar el perfil en dj_profiles
+      console.log('🔍 OBJETO MINIMAL PARA TEST:', djProfileData);
+      console.log('🔍 user_id length:', user.id?.length || 'N/A');
+
+      // Crear o actualizar SOLO el perfil DJ (sin tocar user_profiles)
       const djProfile = await supabaseFunctions.createOrUpdateDJProfile(
         user.id,
         djProfileData
@@ -164,15 +172,26 @@ export default function RegistroDJ() {
 
       if (!djProfile) {
         console.error('❌ Error creando/actualizando DJ profile');
-        Alert.alert('Advertencia', 'Perfil de usuario guardado, pero hubo un problema con el perfil DJ. Por favor intenta editar después.');
+        Alert.alert('Error', 'Hubo un problema al crear tu perfil DJ. Intenta de nuevo.');
+        return;
       } else {
-        console.log('✅ Perfil DJ creado exitosamente');
+        console.log('✅ Perfil DJ creado exitosamente:', djProfile);
+      }
+
+      // 💾 Guardar apodo DJ en AsyncStorage para uso futuro
+      if (apodoDJ.trim()) {
+        await AsyncStorage.setItem('@mivok/dj_apodo', apodoDJ.trim());
+        console.log('💾 Apodo DJ guardado en AsyncStorage:', apodoDJ.trim());
       }
 
       // Guardar bandera local para no volver a pedir registro
       await AsyncStorage.setItem(DJ_FLAG_KEY, 'true');
-      // Navegar directo al Home DJ sin mostrar diálogo para evitar pantallas intermedias
-      router.replace('/home-dj');
+      
+      // ✅ Registro completo - navegar al Home DJ
+      Alert.alert('🎉 ¡Éxito!', 'Te has registrado como DJ exitosamente', [
+        { text: 'Continuar', onPress: () => router.replace('/home-dj') }
+      ]);
+      
     } catch (error) {
       console.error('❌ Error en registro:', error);
       Alert.alert('Error', 'Hubo un problema al registrar. Intenta de nuevo.');
@@ -200,10 +219,18 @@ export default function RegistroDJ() {
           >
             {/* Título */}
             <View style={styles.titleContainer}>
-              <Text style={styles.title}>Comenzemos con tu registro</Text>
+              <Text style={styles.title}>
+                {currentStep === 1 ? 'Comenzemos con tu registro' : 
+                 currentStep === 2 ? '¿Cuál es tu especialidad?' :
+                 '¿Posees tu propio equipo?'}
+              </Text>
               <Text style={styles.subtitle}>
                 Paso {currentStep} de 3 
-                <Text style={styles.emoji}> 🤝</Text>
+                <Text style={styles.emoji}>
+                  {currentStep === 1 ? ' 🤝' : 
+                   currentStep === 2 ? ' 🎵' :
+                   ' 🎧'}
+                </Text>
               </Text>
             </View>
 

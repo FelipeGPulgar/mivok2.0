@@ -295,8 +295,47 @@ export default function ConfiguracionScreen() {
     });
       console.log('✅ Botón de cambio de modo AGREGADO - userIsDJ:', userIsDJ);
     } else {
-      console.log('⚠️ Botón de cambio de modo NO se mostrará porque userIsDJ es false');
-  }
+      // 🔥 NUEVO: Mostrar opción para registrarse como DJ si no tiene perfil
+      console.log('🔄 Usuario no es DJ, agregando opción de registro como DJ');
+      items.unshift({
+        title: 'Modo de Aplicación',
+        items: [
+          {
+            icon: 'musical-notes-outline',
+            title: 'Registrarse como DJ',
+            subtitle: '¿Eres DJ? Crea tu perfil y ofrece tus servicios',
+            type: 'navigate',
+            onPress: async () => {
+              try {
+                console.log('🎵 Iniciando registro como DJ...');
+                
+                // Cargar datos del usuario para pre-llenar el registro
+                const userData = await profileFunctions.loadUserDataWithFallbacks();
+                console.log('📝 Datos del usuario para registro DJ:', {
+                  nombre: userData.name,
+                  email: userData.email || 'No disponible',
+                  tieneImagen: !!userData.profileImage
+                });
+                
+                // Navegar al registro DJ con los datos pre-cargados
+                router.push({
+                  pathname: '/registro-dj',
+                  params: {
+                    preFilledName: userData.name || '',
+                    preFilledEmail: userData.email || '',
+                    fromConfiguration: 'true'
+                  }
+                });
+              } catch (error) {
+                console.error('❌ Error preparando registro DJ:', error);
+                router.push('/registro-dj');
+              }
+            },
+          }
+        ]
+      });
+      console.log('✅ Botón de registro como DJ AGREGADO para usuario email');
+    }
     
     return items;
   }, [userIsDJ, isDJMode, router, notificationsEnabled, locationEnabled, isDJMode]);

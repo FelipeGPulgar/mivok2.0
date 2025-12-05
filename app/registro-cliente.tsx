@@ -15,6 +15,7 @@ import {
     View
 } from "react-native";
 import { AnimatedBackground } from '../components/AnimatedBackground';
+import { getCurrentUser, supabase } from '../lib/supabase';
 
 const { width, height } = Dimensions.get('window');
 
@@ -28,35 +29,13 @@ const fp = (percentage: number) => {
 
 export default function RegistroCliente() {
   const router = useRouter();
-  const CLIENT_FLAG_KEY = '@mivok/is_client_registered';
   const [nombre, setNombre] = useState('');
   const [apellido, setApellido] = useState('');
-  const [telefono, setTelefono] = useState('');
-  const [selectedGeneros, setSelectedGeneros] = useState<string[]>([]);
-  const [showGenerosDropdown, setShowGenerosDropdown] = useState(false);
+  const [apodo, setApodo] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Géneros musicales disponibles (mismos que DJs)
-  const musicGeneros = [
-    'House',
-    'Techno',
-    'Trance',
-    'Drum & Bass',
-    'Dubstep',
-    'Reggaeton',
-    'Trap',
-    'Hip Hop',
-    'Pop',
-    'Rock',
-    'Jazz Funk',
-    'Disco',
-    'Electro',
-    'Deep House',
-    'Progressive'
-  ];
-
-  const handleSiguiente = () => {
-    // Validar nombre y apellido
+  const handleContinuar = async () => {
+    // Validar campos
     if (!nombre.trim()) {
       Alert.alert('Error', 'Por favor ingresa tu nombre');
       return;
@@ -65,48 +44,81 @@ export default function RegistroCliente() {
       Alert.alert('Error', 'Por favor ingresa tu apellido');
       return;
     }
-    if (!telefono.trim()) {
-      Alert.alert('Error', 'Por favor ingresa tu teléfono');
+    if (!apodo.trim()) {
+      Alert.alert('Error', 'Por favor ingresa tu apodo favorito');
       return;
     }
-    guardarRegistroCliente();
-  };
 
-  const handleToggleGenero = (genero: string) => {
-    setSelectedGeneros(prev => 
-      prev.includes(genero) 
-        ? prev.filter(g => g !== genero)
-        : [...prev, genero]
-    );
-  };
-
-  const handleVolver = () => {
-    router.back();
-  };
-
-  const guardarRegistroCliente = async () => {
     setLoading(true);
+    
     try {
-      // Guardar datos del cliente localmente
+      // Obtener usuario actual
+      const user = await getCurrentUser();
+      if (!user) {
+        Alert.alert('Error', 'No se encontró información del usuario');
+        setLoading(false);
+        return;
+      }
+
+      console.log('💾 Guardando perfil del cliente...');
+      
+      // Actualizar perfil en la base de datos
+      const { error: updateError } = await supabase
+        .from('user_profiles')
+        .update({
+          first_name: nombre.trim(),
+          last_name: apellido.trim(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', user.id);
+
+      if (updateError) {
+        console.error('❌ Error actualizando perfil en BD:', updateError);
+        Alert.alert('Error', 'No se pudo guardar tu información en la base de datos');
+        setLoading(false);
+        return;
+      } else {
+        console.log('✅ Perfil actualizado en BD');
+      }
+
+      // También guardar datos localmente como respaldo
       const clientData = {
         nombre: nombre.trim(),
         apellido: apellido.trim(),
-        telefono: telefono.trim(),
-        generosPreferidos: selectedGeneros,
+        apodo: apodo.trim(),
         timestamp: new Date().toISOString(),
       };
 
-      console.log('💾 Guardando datos del cliente localmente:', clientData);
+      // También guardar sesión temporal para usuarios email (sin OAuth)
+      await AsyncStorage.multiSet([
+        ['@mivok/current_user_name', nombre.trim()],
+        ['@mivok/current_user_lastname', apellido.trim()],
+        ['@mivok/current_user_apodo', apodo.trim()],
+        ['@mivok/client_profile', JSON.stringify(clientData)],
+        ['@mivok/email_user_session', JSON.stringify({ userId: user.id, email: user.email })]
+      ]);
       
-      // Guardar en AsyncStorage
-      await AsyncStorage.setItem(CLIENT_FLAG_KEY, 'true');
-      await AsyncStorage.setItem('@mivok/client_data', JSON.stringify(clientData));
+      console.log('✅ Datos guardados en AsyncStorage:', {
+        nombre: nombre.trim(),
+        apodo: apodo.trim(),
+        sessionSaved: true
+      });
+      
+      Alert.alert(
+        '¡Perfil completado!',
+        `¡Hola ${nombre}! Tu perfil está listo. ¡Ahora puedes buscar DJs increíbles!`,
+        [{ 
+          text: 'Continuar', 
+          onPress: () => {
+            // Usar replace para no poder volver atrás
+            router.replace('/home-cliente');
+          }
+        }]
+      );
 
-      // Navegar directo al Home Cliente sin mostrar diálogo para evitar pantallas intermedias
-      router.replace('/home-cliente');
     } catch (error) {
-      console.error('Error en registro:', error);
-      Alert.alert('Error', 'Hubo un problema al registrar. Intenta de nuevo.');
+      console.error('Error guardando perfil:', error);
+      Alert.alert('Error', 'No se pudo guardar tu información');
     } finally {
       setLoading(false);
     }
@@ -140,6 +152,7 @@ export default function RegistroCliente() {
                   onChangeText={setNombre}
                   placeholder="Tu nombre"
                   placeholderTextColor="#999"
+                  autoCapitalize="words"
                 />
               </View>
 
@@ -152,95 +165,39 @@ export default function RegistroCliente() {
                   onChangeText={setApellido}
                   placeholder="Tu apellido"
                   placeholderTextColor="#999"
+                  autoCapitalize="words"
                 />
               </View>
 
-              {/* Campo Teléfono */}
+              {/* Campo Apodo */}
               <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>Tu teléfono <Text style={{color: '#FF6B6B'}}>*</Text></Text>
+                <Text style={styles.fieldLabel}>Pon tu apodo de DJ <Text style={{color: '#FF6B6B'}}>*</Text></Text>
                 <TextInput
                   style={styles.textInput}
-                  value={telefono}
-                  onChangeText={setTelefono}
-                  placeholder="Tu número de teléfono"
+                  value={apodo}
+                  onChangeText={setApodo}
+                  placeholder="Tu apodo de DJ favorito"
                   placeholderTextColor="#999"
-                  keyboardType="phone-pad"
+                  autoCapitalize="words"
                 />
               </View>
-
-              {/* Campo Géneros Preferidos */}
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>Géneros que te gustan</Text>
-                <TouchableOpacity 
-                  style={styles.dropdown}
-                  onPress={() => setShowGenerosDropdown(!showGenerosDropdown)}
-                >
-                  <View style={styles.selectedEspecialidadesView}>
-                    {selectedGeneros.length > 0 ? (
-                      <Text style={styles.dropdownText}>
-                        {selectedGeneros.length} género{selectedGeneros.length > 1 ? 's' : ''} seleccionado{selectedGeneros.length > 1 ? 's' : ''}
-                      </Text>
-                    ) : (
-                      <Text style={styles.dropdownText}>Selecciona géneros (opcional)</Text>
-                    )}
-                  </View>
-                </TouchableOpacity>
-
-                {showGenerosDropdown && (
-                  <ScrollView style={styles.dropdownOptions} nestedScrollEnabled={true}>
-                    {musicGeneros.map((genero, index) => (
-                      <TouchableOpacity
-                        key={index}
-                        style={styles.multiSelectOption}
-                        onPress={() => handleToggleGenero(genero)}
-                      >
-                        <View style={[
-                          styles.checkbox,
-                          selectedGeneros.includes(genero) && styles.checkboxSelected
-                        ]}>
-                          {selectedGeneros.includes(genero) && (
-                            <Text style={styles.checkmark}>✓</Text>
-                          )}
-                        </View>
-                        <Text style={styles.multiSelectText}>{genero}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                )}
-              </View>
-
-              {/* Tags de géneros seleccionados */}
-              {selectedGeneros.length > 0 && (
-                <View style={styles.tagsContainer}>
-                  {selectedGeneros.map((genero, index) => (
-                    <View key={index} style={styles.tag}>
-                      <Text style={styles.tagText}>{genero}</Text>
-                      <TouchableOpacity onPress={() => handleToggleGenero(genero)}>
-                        <Text style={styles.tagClose}>×</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </View>
-              )}
             </View>
 
-
-
-            {/* Botones de acción */}
+            {/* Botón de acción */}
             <View style={styles.buttonsContainer}>
               <TouchableOpacity 
                 style={[styles.nextButton, loading && styles.buttonDisabled]} 
-                onPress={handleSiguiente}
+                onPress={handleContinuar}
                 disabled={loading}
               >
                 <Text style={styles.nextButtonText}>
-                  {loading ? 'Registrando...' : 'Registrarse'}
+                  {loading ? 'Guardando...' : '¡Listo para buscar DJs! 🎵'}
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity 
                 style={styles.backButton}
-                onPress={handleVolver}
+                onPress={() => router.back()}
                 disabled={loading}
               >
                 <Text style={styles.backButtonText}>Cancelar</Text>
