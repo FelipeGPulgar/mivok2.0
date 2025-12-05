@@ -26,7 +26,7 @@ export default function HomeClienteScreen() {
       }
       
       // Cargar datos del usuario con fallbacks
-      const userData = await profileFunctions.loadUserDataWithFallbacks();
+      const userData = await profileFunctions.loadUserDataWithFallbacks(false); // isDJMode = false (modo cliente)
       console.log('✅ Datos del cliente cargados:', userData);
       setApodoCliente(userData.name);
       

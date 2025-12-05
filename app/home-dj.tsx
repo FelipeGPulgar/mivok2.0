@@ -31,9 +31,9 @@ export default function HomeDJScreen() {
       }
 
       // Cargar datos del usuario con fallbacks
-      const userData = await profileFunctions.loadUserDataWithFallbacks();
+      const userData = await profileFunctions.loadUserDataWithFallbacks(true); // isDJMode = true
       setApodoDJ(userData.name);
-      
+
       // Cargar estadísticas si hay usuario
       const user = await getCurrentUser();
       if (user) {
@@ -55,14 +55,14 @@ export default function HomeDJScreen() {
       // Obtener eventos del DJ
       const eventos = await eventsFunctions.listEventsForUser(userId, 'dj');
       console.log(`📊 Eventos obtenidos: ${eventos.length}`);
-      
+
       // Contar trabajos completados
       const eventosCompletados = eventos.filter(evento => evento.estado === 'completado');
       setTrabajos(eventosCompletados.length);
-      
+
       // Calcular ganancias de eventos completados (monto sin comisión para el DJ)
       let gananciasTotales = 0;
-      
+
       for (const evento of eventosCompletados) {
         // Obtener la propuesta relacionada para conseguir monto_sin_comision
         try {
@@ -78,9 +78,9 @@ export default function HomeDJScreen() {
           gananciasTotales += Math.round(evento.monto_final * 0.9);
         }
       }
-        
+
       setGanancias(gananciasTotales);
-      
+
       console.log(`💰 Ganancias calculadas: $${gananciasTotales} de ${eventosCompletados.length} trabajos`);
     } catch (error) {
       console.error('❌ Error cargando estadísticas:', error);
@@ -95,13 +95,14 @@ export default function HomeDJScreen() {
     useCallback(() => {
       const cargarImagenPerfil = async () => {
         try {
-          // 🔥 Cargar foto_url desde Supabase (foto_url)
-          const profileData = await profileFunctions.getCurrentProfile();
-          console.log('📸 Imagen de perfil cargada:', profileData?.foto_url ? 'Sí' : 'No');
-          if (profileData?.foto_url) {
-            setProfileImage(profileData.foto_url);
+          // 🔥 Cargar imagen desde dj_profiles.imagen_url (no user_profiles.foto_url)
+          const djProfile = await profileFunctions.getCurrentDJProfile();
+          if (djProfile?.imagen_url) {
+            setProfileImage(djProfile.imagen_url);
           } else {
-            setProfileImage(null);
+            // Fallback a foto de user_profiles si no hay imagen de DJ
+            const profileData = await profileFunctions.getCurrentProfile();
+            setProfileImage(profileData?.foto_url || null);
           }
         } catch (error) {
           console.error('Error cargando imagen de perfil:', error);
@@ -111,18 +112,14 @@ export default function HomeDJScreen() {
       const recargarDatos = async () => {
         const user = await getCurrentUser();
         if (user) {
-          console.log('🔄 Recargando estadísticas en useFocusEffect...');
           await cargarEstadisticas(user.id);
         }
       };
 
       // Cargar perfil e imagen cuando la pantalla recibe foco
-      // Pequeño delay para asegurar que la query a Supabase esté completa
-      setTimeout(() => {
-        cargarPerfil();
-        cargarImagenPerfil();
-        recargarDatos();
-      }, 300);
+      cargarPerfil();
+      cargarImagenPerfil();
+      recargarDatos();
     }, [cargarPerfil])
   );
 

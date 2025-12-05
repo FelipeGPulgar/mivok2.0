@@ -55,7 +55,7 @@ export default function ApartadoMasClienteScreen() {
       console.log('🔄 Iniciando carga de perfil del cliente...');
       
       // Cargar datos del usuario con fallbacks
-      const userData = await profileFunctions.loadUserDataWithFallbacks();
+      const userData = await profileFunctions.loadUserDataWithFallbacks(false); // isDJMode = false (modo cliente)
       console.log('✅ Datos del cliente cargados:', userData);
       
       setUserName(userData.name);

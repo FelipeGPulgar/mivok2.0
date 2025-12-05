@@ -3,20 +3,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from "react";
 import {
-    Alert,
-    Dimensions,
-    KeyboardAvoidingView,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  Alert,
+  Dimensions,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
 import { AnimatedBackground } from '../components/AnimatedBackground';
-import { getCurrentUser } from '../lib/supabase';
+import { getCurrentUser, supabase } from '../lib/supabase';
 import * as supabaseFunctions from '../lib/supabase-functions';
 
 const { width, height } = Dimensions.get('window');
@@ -33,7 +33,7 @@ export default function RegistroDJ() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const DJ_FLAG_KEY = '@mivok/is_dj_registered';
-  
+
   // Estado del formulario
   const [currentStep, setCurrentStep] = useState(1); // 1: nombre/apellido, 2: especialidades, 3: equipo/redes
   const [nombre, setNombre] = useState('');
@@ -50,29 +50,28 @@ export default function RegistroDJ() {
     if (params.fromConfiguration && params.preFilledName && nombre === '') {
       console.log('🎵 Pre-llenando datos desde configuración:', {
         nombre: params.preFilledName,
-        email: params.preFilledEmail
+        email: params.preFilledEmail,
+        apodoDJ: params.preFilledDJNickname || 'No proporcionado'
       });
-      
+
       // Si viene un nombre completo, intentar separarlo
       const fullName = params.preFilledName as string;
       const nameParts = fullName.trim().split(' ');
-      
+
       if (nameParts.length === 1) {
         setNombre(nameParts[0]);
-        setApodoDJ(nameParts[0]); // Usar el mismo nombre como apodo por defecto
+        // 🔥 ARREGLO: Usar apodo pre-llenado si existe, sino usar nombre
+        setApodoDJ((params.preFilledDJNickname as string) || nameParts[0]);
       } else {
         setNombre(nameParts[0]);
         setApellido(nameParts.slice(1).join(' '));
-        setApodoDJ(nameParts[0]); // Usar el primer nombre como apodo por defecto
+        // 🔥 ARREGLO: Usar apodo pre-llenado si existe, sino usar primer nombre
+        setApodoDJ((params.preFilledDJNickname as string) || nameParts[0]);
       }
-      
-      // 🚀 MEJORA: Si ya tenemos nombre y apellido, saltar directo al paso 2
-      if (fullName.trim().length > 0) {
-        console.log('✅ Datos completos encontrados, saltando al paso 2 (especialidades)');
-        setCurrentStep(2);
-      }
-      
-      console.log('✅ Datos pre-llenados aplicados');
+
+      // 🔥 CAMBIO: NO saltar al paso 2 automáticamente
+      // Dejar que el usuario vea y confirme su apodo de DJ en el paso 1
+      console.log('✅ Datos pre-llenados aplicados - Usuario puede verificar su apodo DJ');
     }
   }, [params.fromConfiguration, params.preFilledName, nombre]);
 
@@ -91,7 +90,7 @@ export default function RegistroDJ() {
   };
 
   const handleToggleEspecialidad = (especialidad: string) => {
-    setSelectedEspecialidades(prev => 
+    setSelectedEspecialidades(prev =>
       prev.includes(especialidad)
         ? prev.filter(e => e !== especialidad)
         : [...prev, especialidad]
@@ -142,7 +141,7 @@ export default function RegistroDJ() {
     try {
       console.log('🎵 INICIO guardarRegistroDJ - Especialidades seleccionadas:', selectedEspecialidades);
       console.log('🎵 INICIO guardarRegistroDJ - tieneEquipo:', tieneEquipo);
-      
+
       // Obtener el usuario actual
       const user = await getCurrentUser();
       if (!user) {
@@ -152,6 +151,27 @@ export default function RegistroDJ() {
       }
 
       console.log('👤 Usuario obtenido:', user.id);
+
+      // 🔥 NUEVO: Actualizar user_profiles con el nombre completo y apodo DJ
+      const nombreCompleto = `${nombre.trim()} ${apellido.trim()}`;
+      const apodoFinal = apodoDJ.trim() || nombre.trim();
+
+      const { error: updateError } = await supabase
+        .from('user_profiles')
+        .update({
+          first_name: nombreCompleto,
+          dj_nickname: apodoFinal, // 🔥 NUEVO: Guardar apodo en BD
+          is_dj: true,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', user.id);
+
+      if (updateError) {
+        console.warn('⚠️ Error actualizando nombre en user_profiles:', updateError);
+        // No bloqueamos el flujo, solo advertimos
+      } else {
+        console.log('✅ Nombre y apodo DJ actualizados en user_profiles:', nombreCompleto, '/', apodoFinal);
+      }
 
       // 🚀 OBJETO TEST ULTRA-MINIMAL PARA DIAGNOSTICAR
       const djProfileData = {
@@ -178,20 +198,22 @@ export default function RegistroDJ() {
         console.log('✅ Perfil DJ creado exitosamente:', djProfile);
       }
 
-      // 💾 Guardar apodo DJ en AsyncStorage para uso futuro
-      if (apodoDJ.trim()) {
-        await AsyncStorage.setItem('@mivok/dj_apodo', apodoDJ.trim());
-        console.log('💾 Apodo DJ guardado en AsyncStorage:', apodoDJ.trim());
-      }
+      // 💾 Guardar nombre completo y apodo DJ en AsyncStorage
+      await AsyncStorage.setItem('@mivok/current_user_name', nombreCompleto);
+      console.log('💾 Nombre completo guardado en AsyncStorage:', nombreCompleto);
+
+      // Guardar apodo DJ (ya calculado arriba como apodoFinal)
+      await AsyncStorage.setItem('@mivok/dj_apodo', apodoFinal);
+      console.log('💾 Apodo DJ guardado en AsyncStorage:', apodoFinal);
 
       // Guardar bandera local para no volver a pedir registro
       await AsyncStorage.setItem(DJ_FLAG_KEY, 'true');
-      
+
       // ✅ Registro completo - navegar al Home DJ
       Alert.alert('🎉 ¡Éxito!', 'Te has registrado como DJ exitosamente', [
         { text: 'Continuar', onPress: () => router.replace('/home-dj') }
       ]);
-      
+
     } catch (error) {
       console.error('❌ Error en registro:', error);
       Alert.alert('Error', 'Hubo un problema al registrar. Intenta de nuevo.');
@@ -207,29 +229,29 @@ export default function RegistroDJ() {
 
   return (
     <AnimatedBackground>
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <SafeAreaView style={styles.safeArea}>
-          <ScrollView 
-            style={styles.scrollContainer} 
+          <ScrollView
+            style={styles.scrollContainer}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
           >
             {/* Título */}
             <View style={styles.titleContainer}>
               <Text style={styles.title}>
-                {currentStep === 1 ? 'Comenzemos con tu registro' : 
-                 currentStep === 2 ? '¿Cuál es tu especialidad?' :
-                 '¿Posees tu propio equipo?'}
+                {currentStep === 1 ? 'Comenzemos con tu registro' :
+                  currentStep === 2 ? '¿Cuál es tu especialidad?' :
+                    '¿Posees tu propio equipo?'}
               </Text>
               <Text style={styles.subtitle}>
-                Paso {currentStep} de 3 
+                Paso {currentStep} de 3
                 <Text style={styles.emoji}>
-                  {currentStep === 1 ? ' 🤝' : 
-                   currentStep === 2 ? ' 🎵' :
-                   ' 🎧'}
+                  {currentStep === 1 ? ' 🤝' :
+                    currentStep === 2 ? ' 🎵' :
+                      ' 🎧'}
                 </Text>
               </Text>
             </View>
@@ -239,7 +261,7 @@ export default function RegistroDJ() {
               <View style={styles.formContainer}>
                 {/* Campo Nombre */}
                 <View style={styles.fieldContainer}>
-                  <Text style={styles.fieldLabel}>¿Cuál es tu nombre? <Text style={{color: '#FF6B6B'}}>*</Text></Text>
+                  <Text style={styles.fieldLabel}>¿Cuál es tu nombre? <Text style={{ color: '#FF6B6B' }}>*</Text></Text>
                   <TextInput
                     style={styles.textInput}
                     value={nombre}
@@ -251,7 +273,7 @@ export default function RegistroDJ() {
 
                 {/* Campo Apellido */}
                 <View style={styles.fieldContainer}>
-                  <Text style={styles.fieldLabel}>¿Cuál es tu apellido? <Text style={{color: '#FF6B6B'}}>*</Text></Text>
+                  <Text style={styles.fieldLabel}>¿Cuál es tu apellido? <Text style={{ color: '#FF6B6B' }}>*</Text></Text>
                   <TextInput
                     style={styles.textInput}
                     value={apellido}
@@ -280,69 +302,69 @@ export default function RegistroDJ() {
               <View style={styles.formContainer}>
                 {/* Campo Especialidades - Multi-Select */}
                 <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>¿Cuál es tu especialidad al mezclar?</Text>
-                <Text style={styles.fieldSubtitle}>Selecciona todas las que apliquen</Text>
-                
-                <TouchableOpacity 
-                  style={styles.dropdown}
-                  onPress={() => setShowEspecialidadesDropdown(!showEspecialidadesDropdown)}
-                >
-                  <View style={styles.selectedEspecialidadesView}>
-                    {selectedEspecialidades.length > 0 ? (
-                      <Text style={styles.dropdownText}>
-                        {selectedEspecialidades.length} seleccionadas
-                      </Text>
-                    ) : (
-                      <Text style={styles.dropdownText}>Selecciona tus géneros</Text>
-                    )}
-                  </View>
-                  <Ionicons 
-                    name={showEspecialidadesDropdown ? "chevron-up" : "chevron-down"} 
-                    size={fp(20)} 
-                    color="#666" 
-                  />
-                </TouchableOpacity>
+                  <Text style={styles.fieldLabel}>¿Cuál es tu especialidad al mezclar?</Text>
+                  <Text style={styles.fieldSubtitle}>Selecciona todas las que apliquen</Text>
 
-                {showEspecialidadesDropdown && (
-                  <ScrollView 
-                    style={styles.multiSelectOptions}
-                    scrollEnabled={true}
-                    nestedScrollEnabled={true}
+                  <TouchableOpacity
+                    style={styles.dropdown}
+                    onPress={() => setShowEspecialidadesDropdown(!showEspecialidadesDropdown)}
                   >
-                    {especialidadesOptions.map((especialidad, index) => (
-                      <TouchableOpacity
-                        key={index}
-                        style={styles.checkboxOption}
-                        onPress={() => handleToggleEspecialidad(especialidad)}
-                      >
-                        <View style={[
-                          styles.checkbox,
-                          selectedEspecialidades.includes(especialidad) && styles.checkboxSelected
-                        ]}>
-                          {selectedEspecialidades.includes(especialidad) && (
-                            <Ionicons name="checkmark" size={fp(12)} color="#fff" />
-                          )}
-                        </View>
-                        <Text style={styles.checkboxLabel}>{especialidad}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                )}
+                    <View style={styles.selectedEspecialidadesView}>
+                      {selectedEspecialidades.length > 0 ? (
+                        <Text style={styles.dropdownText}>
+                          {selectedEspecialidades.length} seleccionadas
+                        </Text>
+                      ) : (
+                        <Text style={styles.dropdownText}>Selecciona tus géneros</Text>
+                      )}
+                    </View>
+                    <Ionicons
+                      name={showEspecialidadesDropdown ? "chevron-up" : "chevron-down"}
+                      size={fp(20)}
+                      color="#666"
+                    />
+                  </TouchableOpacity>
 
-                {selectedEspecialidades.length > 0 && (
-                  <View style={styles.selectedTagsContainer}>
-                    {selectedEspecialidades.map((especialidad, index) => (
-                      <View key={index} style={styles.selectedTag}>
-                        <Text style={styles.selectedTagText}>{especialidad}</Text>
-                        <TouchableOpacity onPress={() => handleToggleEspecialidad(especialidad)}>
-                          <Ionicons name="close" size={fp(14)} color="#fff" />
+                  {showEspecialidadesDropdown && (
+                    <ScrollView
+                      style={styles.multiSelectOptions}
+                      scrollEnabled={true}
+                      nestedScrollEnabled={true}
+                    >
+                      {especialidadesOptions.map((especialidad, index) => (
+                        <TouchableOpacity
+                          key={index}
+                          style={styles.checkboxOption}
+                          onPress={() => handleToggleEspecialidad(especialidad)}
+                        >
+                          <View style={[
+                            styles.checkbox,
+                            selectedEspecialidades.includes(especialidad) && styles.checkboxSelected
+                          ]}>
+                            {selectedEspecialidades.includes(especialidad) && (
+                              <Ionicons name="checkmark" size={fp(12)} color="#fff" />
+                            )}
+                          </View>
+                          <Text style={styles.checkboxLabel}>{especialidad}</Text>
                         </TouchableOpacity>
-                      </View>
-                    ))}
-                  </View>
-                )}
+                      ))}
+                    </ScrollView>
+                  )}
+
+                  {selectedEspecialidades.length > 0 && (
+                    <View style={styles.selectedTagsContainer}>
+                      {selectedEspecialidades.map((especialidad, index) => (
+                        <View key={index} style={styles.selectedTag}>
+                          <Text style={styles.selectedTagText}>{especialidad}</Text>
+                          <TouchableOpacity onPress={() => handleToggleEspecialidad(especialidad)}>
+                            <Ionicons name="close" size={fp(14)} color="#fff" />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
               </View>
-            </View>
             )}
 
             {/* Formulario - PASO 3: Equipo y Redes Sociales */}
@@ -350,67 +372,67 @@ export default function RegistroDJ() {
               <View style={styles.formContainer}>
                 {/* Campo Equipo */}
                 <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>¿Posees tu equipo propio?</Text>
-                <TouchableOpacity 
-                  style={styles.dropdown}
-                  onPress={() => setShowEquipoDropdown(!showEquipoDropdown)}
-                >
-                  <Text style={styles.dropdownText}>
-                    {tieneEquipo || 'Selecciona una opción'}
-                  </Text>
-                  <Ionicons 
-                    name={showEquipoDropdown ? "chevron-up" : "chevron-down"} 
-                    size={fp(20)} 
-                    color="#666" 
-                  />
-                </TouchableOpacity>
-                
-                {showEquipoDropdown && (
-                  <View style={styles.dropdownOptions}>
-                    {equipoOptions.map((option, index) => (
-                      <TouchableOpacity
-                        key={index}
-                        style={styles.dropdownOption}
-                        onPress={() => handleEquipoSelect(option)}
-                      >
-                        <Text style={styles.dropdownOptionText}>{option}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-              </View>
+                  <Text style={styles.fieldLabel}>¿Posees tu equipo propio?</Text>
+                  <TouchableOpacity
+                    style={styles.dropdown}
+                    onPress={() => setShowEquipoDropdown(!showEquipoDropdown)}
+                  >
+                    <Text style={styles.dropdownText}>
+                      {tieneEquipo || 'Selecciona una opción'}
+                    </Text>
+                    <Ionicons
+                      name={showEquipoDropdown ? "chevron-up" : "chevron-down"}
+                      size={fp(20)}
+                      color="#666"
+                    />
+                  </TouchableOpacity>
 
-              {/* Enlaces de redes sociales */}
-              <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>Enlaza tus redes sociales</Text>
-                <View style={styles.socialContainer}>
-                  <TouchableOpacity 
-                    style={styles.socialButton} 
-                    onPress={() => handleSocialLink('Facebook')}
-                  >
-                    <Ionicons name="logo-facebook" size={fp(18)} color="#fff" />
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={styles.socialButton}
-                    onPress={() => handleSocialLink('Instagram')}
-                  >
-                    <Ionicons name="logo-instagram" size={fp(18)} color="#fff" />
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={styles.socialButton}
-                    onPress={() => handleSocialLink('Twitter')}
-                  >
-                    <Ionicons name="logo-twitter" size={fp(18)} color="#fff" />
-                  </TouchableOpacity>
+                  {showEquipoDropdown && (
+                    <View style={styles.dropdownOptions}>
+                      {equipoOptions.map((option, index) => (
+                        <TouchableOpacity
+                          key={index}
+                          style={styles.dropdownOption}
+                          onPress={() => handleEquipoSelect(option)}
+                        >
+                          <Text style={styles.dropdownOptionText}>{option}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
                 </View>
+
+                {/* Enlaces de redes sociales */}
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>Enlaza tus redes sociales</Text>
+                  <View style={styles.socialContainer}>
+                    <TouchableOpacity
+                      style={styles.socialButton}
+                      onPress={() => handleSocialLink('Facebook')}
+                    >
+                      <Ionicons name="logo-facebook" size={fp(18)} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.socialButton}
+                      onPress={() => handleSocialLink('Instagram')}
+                    >
+                      <Ionicons name="logo-instagram" size={fp(18)} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.socialButton}
+                      onPress={() => handleSocialLink('Twitter')}
+                    >
+                      <Ionicons name="logo-twitter" size={fp(18)} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
             )}
 
             {/* Botones de acción */}
             <View style={styles.buttonsContainer}>
-              <TouchableOpacity 
-                style={[styles.nextButton, loading && styles.buttonDisabled]} 
+              <TouchableOpacity
+                style={[styles.nextButton, loading && styles.buttonDisabled]}
                 onPress={handleSiguiente}
                 disabled={loading}
               >
@@ -419,7 +441,7 @@ export default function RegistroDJ() {
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.backButton}
                 onPress={handleVolver}
                 disabled={loading}

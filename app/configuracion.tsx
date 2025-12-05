@@ -3,13 +3,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TouchableOpacity,
-    View
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BottomNavBar from '../components/BottomNavBar';
@@ -49,10 +49,10 @@ export default function ConfiguracionScreen() {
   const [hasDJProfile, setHasDJProfile] = useState<boolean | null>(null);
 
   const isDJMode = params.mode === 'dj' || (isDJ && params.mode !== 'client');
-  
+
   // Debug: Verificar valores
   console.log('🔧 Configuración - isDJ:', isDJ, 'isDJMode:', isDJMode, 'params.mode:', params.mode, 'hasDJProfile:', hasDJProfile);
-  
+
   const systemColorScheme = useColorScheme();
   const [isDarkMode, setIsDarkMode] = useState(systemColorScheme === 'dark');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -77,7 +77,7 @@ export default function ConfiguracionScreen() {
         setHasDJProfile(false);
       }
     };
-    
+
     // Siempre verificar directamente, no confiar solo en el contexto
     checkDJProfile();
   }, [isDJ]); // Re-ejecutar si isDJ cambia
@@ -245,7 +245,7 @@ export default function ConfiguracionScreen() {
   // Agregar botón de cambiar modo si es DJ
   // Usar useMemo para recalcular cuando cambien los valores
   const userIsDJ = hasDJProfile === true || isDJ === true || params.mode === 'dj';
-  
+
   console.log('🔧 Verificando si mostrar botón de cambio de modo:', {
     hasDJProfile,
     isDJ,
@@ -253,46 +253,46 @@ export default function ConfiguracionScreen() {
     isDJMode,
     userIsDJ
   });
-  
+
   // Construir settingsItems dinámicamente para que se actualice cuando cambien los estados
   const settingsItems = useMemo(() => {
     const items = [...baseSettingsItems];
-    
+
     // SIEMPRE mostrar el botón si el usuario es DJ, sin importar el modo actual
     if (userIsDJ) {
       items.unshift({
-      title: 'Modo de Aplicación',
-      items: [
-        {
-          icon: isDJMode ? 'person-outline' : 'musical-notes-outline',
-          title: isDJMode ? 'Cambiar a modo Cliente' : 'Cambiar a modo DJ',
-          subtitle: isDJMode ? 'Ver la app como cliente' : 'Volver a gestionar mi perfil DJ',
-          type: 'navigate',
-          onPress: async () => {
-            try {
-              if (isDJMode) {
-                // Cambiar a modo cliente
-                console.log('🔄 Cambiando a modo cliente...');
-                await setCurrentUserMode('cliente');
-                await refreshMode();
-                router.push('/home-cliente');
-                console.log('✅ Cambio a modo cliente completado');
-              } else {
-                // Cambiar a modo DJ
-                console.log('🔄 Cambiando a modo DJ...');
-                await setCurrentUserMode('dj');
-                await refreshMode();
-                router.push('/home-dj');
-                console.log('✅ Cambio a modo DJ completado');
+        title: 'Modo de Aplicación',
+        items: [
+          {
+            icon: isDJMode ? 'person-outline' : 'musical-notes-outline',
+            title: isDJMode ? 'Cambiar a modo Cliente' : 'Cambiar a modo DJ',
+            subtitle: isDJMode ? 'Ver la app como cliente' : 'Volver a gestionar mi perfil DJ',
+            type: 'navigate',
+            onPress: async () => {
+              try {
+                if (isDJMode) {
+                  // Cambiar a modo cliente
+                  console.log('🔄 Cambiando a modo cliente...');
+                  await setCurrentUserMode('cliente');
+                  await refreshMode();
+                  router.push('/home-cliente');
+                  console.log('✅ Cambio a modo cliente completado');
+                } else {
+                  // Cambiar a modo DJ
+                  console.log('🔄 Cambiando a modo DJ...');
+                  await setCurrentUserMode('dj');
+                  await refreshMode();
+                  router.push('/home-dj');
+                  console.log('✅ Cambio a modo DJ completado');
+                }
+              } catch (error) {
+                console.error('❌ Error al cambiar modo:', error);
+                Alert.alert('Error', 'No se pudo cambiar el modo. Intenta de nuevo.');
               }
-            } catch (error) {
-              console.error('❌ Error al cambiar modo:', error);
-              Alert.alert('Error', 'No se pudo cambiar el modo. Intenta de nuevo.');
-            }
-          },
-        }
-      ]
-    });
+            },
+          }
+        ]
+      });
       console.log('✅ Botón de cambio de modo AGREGADO - userIsDJ:', userIsDJ);
     } else {
       // 🔥 NUEVO: Mostrar opción para registrarse como DJ si no tiene perfil
@@ -308,21 +308,28 @@ export default function ConfiguracionScreen() {
             onPress: async () => {
               try {
                 console.log('🎵 Iniciando registro como DJ...');
-                
-                // Cargar datos del usuario para pre-llenar el registro
-                const userData = await profileFunctions.loadUserDataWithFallbacks();
+
+                // Cargar datos del usuario para pre-llenar el registro (modo cliente para obtener nombre real)
+                const userData = await profileFunctions.loadUserDataWithFallbacks(false);
+
+                // 🔥 NUEVO: Cargar apodo de DJ desde AsyncStorage si existe
+                const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+                const storedDJNickname = await AsyncStorage.getItem('@mivok/dj_apodo');
+
                 console.log('📝 Datos del usuario para registro DJ:', {
                   nombre: userData.name,
                   email: userData.email || 'No disponible',
+                  apodoDJ: storedDJNickname || 'No guardado',
                   tieneImagen: !!userData.profileImage
                 });
-                
+
                 // Navegar al registro DJ con los datos pre-cargados
                 router.push({
                   pathname: '/registro-dj',
                   params: {
                     preFilledName: userData.name || '',
                     preFilledEmail: userData.email || '',
+                    preFilledDJNickname: storedDJNickname || '', // Pasar el apodo guardado
                     fromConfiguration: 'true'
                   }
                 });
@@ -336,7 +343,7 @@ export default function ConfiguracionScreen() {
       });
       console.log('✅ Botón de registro como DJ AGREGADO para usuario email');
     }
-    
+
     return items;
   }, [userIsDJ, isDJMode, router, notificationsEnabled, locationEnabled, isDJMode]);
 

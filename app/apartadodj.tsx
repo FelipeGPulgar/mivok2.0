@@ -1,15 +1,15 @@
 
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useState } from 'react';
 import {
-    Alert,
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
@@ -55,12 +55,14 @@ export default function ApartadoDJScreen() {
   const [djProfile, setDjProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load user profile
-  useEffect(() => {
-    loadProfile();
-    // Cargar conteo de no leídas
-    getUnreadCount().then(setUnread).catch(() => setUnread(0));
-  }, []);
+  // Load user profile - reload every time screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      loadProfile();
+      // Cargar conteo de no leídas
+      getUnreadCount().then(setUnread).catch(() => setUnread(0));
+    }, [])
+  );
 
   const loadProfile = async () => {
     try {
@@ -68,8 +70,8 @@ export default function ApartadoDJScreen() {
       console.log('📋 DJ Profile loaded:', djProfile);
 
       // Cargar datos del usuario con fallbacks
-      const userData = await profileFunctions.loadUserDataWithFallbacks();
-      
+      const userData = await profileFunctions.loadUserDataWithFallbacks(true); // isDJMode = true
+
       console.log('👤 User data loaded:', userData);
       setDjProfile({ ...djProfile, userProfile: { first_name: userData.name, foto_url: userData.profileImage } });
     } catch (error) {
@@ -223,7 +225,7 @@ export default function ApartadoDJScreen() {
 
               <View style={styles.profileInfo}>
                 <Text style={styles.userName}>
-                  {djProfile?.userProfile?.last_name?.split(' - ')[0] || 'Usuario'}
+                  {djProfile?.userProfile?.first_name || 'Usuario'}
                 </Text>
                 <Text style={styles.userSubtitle}>DJ Premium</Text>
               </View>

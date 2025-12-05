@@ -84,25 +84,25 @@ export default function EditarPerfilScreen() {
         try {
             // Primero, intentar usar el parámetro type
             let isUserDJ = params.type === 'dj';
-            
+
             // Si no hay parámetro, verificar la flag en AsyncStorage
             if (!params.type) {
                 const isDJRegistered = await AsyncStorage.getItem(DJ_FLAG_KEY);
                 isUserDJ = isDJRegistered === 'true';
             }
-            
+
             setIsDJ(isUserDJ);
 
-            // 🔥 CARGAR DATOS DEL USUARIO CON FALLBACKS
-            const userData = await profileFunctions.loadUserDataWithFallbacks();
-            
+            // 🔥 CARGAR DATOS DEL USUARIO CON FALLBACKS (pasar isDJ para obtener el nombre correcto)
+            const userData = await profileFunctions.loadUserDataWithFallbacks(isUserDJ);
+
             console.log('🔍 Debug loadUserProfile:', {
                 isUserDJ,
                 userDataName: userData.name,
                 clientNombreAntes: clientNombre,
                 djNombreAntes: djNombre
             });
-            
+
             // Aplicar nombre desde fallbacks según el tipo de usuario
             if (isUserDJ) {
                 setDjNombre(userData.name);
@@ -111,7 +111,7 @@ export default function EditarPerfilScreen() {
                 setClientNombre(userData.name);
                 console.log('✅ Cliente nombre seteado:', userData.name);
             }
-            
+
             // Si tiene imagen de perfil, usarla
             if (userData.profileImage) {
                 console.log('✅ Foto cargada desde fallbacks:', userData.profileImage);
@@ -302,15 +302,15 @@ export default function EditarPerfilScreen() {
             if (profileImage && !profileImage.includes('unsplash.com') && !profileImage.includes('supabase.co')) {
                 try {
                     console.log('📸 Subiendo imagen de perfil...');
-                    
+
                     let base64Data = profileImage;
-                    
+
                     // Si es URI local (file://), convertir a base64
                     if (profileImage.startsWith('file://')) {
                         console.log('🔄 Convirtiendo archivo local a base64...');
                         const response = await fetch(profileImage);
                         const buffer = await response.arrayBuffer();
-                        
+
                         // Convertir ArrayBuffer a base64
                         const bytes = new Uint8Array(buffer);
                         let binary = '';
@@ -322,11 +322,11 @@ export default function EditarPerfilScreen() {
                         // Ya es data URL, extraer base64
                         base64Data = profileImage.split(',')[1] || profileImage;
                     }
-                    
+
                     // Extraer base64 puro (sin prefijo data:)
                     const base64Pure = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
                     console.log('✅ Base64 listo, tamaño:', base64Pure.length, 'caracteres');
-                    
+
                     const imageUrl = await profileFunctions.uploadProfileImage(user.id, base64Pure);
                     if (imageUrl) {
                         const shortUrl = imageUrl.length > 50 ? imageUrl.substring(0, 50) + '...' : imageUrl;
@@ -355,7 +355,7 @@ export default function EditarPerfilScreen() {
                 await AsyncStorage.setItem('@mivok/is_dj_registered', 'false');
                 await AsyncStorage.setItem('@mivok/current_user_name', clientNombre);
                 console.log('💾 Nombre guardado en AsyncStorage:', clientNombre);
-                
+
                 // También actualizar la imagen en AsyncStorage si hay una nueva
                 if (profileImage) {
                     await AsyncStorage.setItem('@mivok/profile_image', profileImage);
@@ -422,10 +422,11 @@ export default function EditarPerfilScreen() {
 
             // Si hay nueva imagen, subirla primero
             // 🔥 Detectar si es una foto nueva (URI local o data:)
+            let uploadedImageUrl: string | null = null;
             if (profileImage && !profileImage.includes('unsplash.com') && !profileImage.includes('supabase.co')) {
                 try {
                     console.log('📸 Subiendo imagen de perfil DJ...');
-                    
+
                     // Si es URI local, convertir a base64
                     let base64Data = profileImage;
                     if (profileImage.startsWith('file://')) {
@@ -438,14 +439,14 @@ export default function EditarPerfilScreen() {
                             reader.readAsDataURL(blob);
                         });
                     }
-                    
+
                     // Extraer base64 puro
                     const base64Pure = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
                     const imageUrl = await profileFunctions.uploadProfileImage(user.id, base64Pure);
                     if (imageUrl) {
                         const shortUrl = imageUrl.length > 50 ? imageUrl.substring(0, 50) + '...' : imageUrl;
                         console.log('✅ Imagen subida:', shortUrl);
-                        await profileFunctions.updateProfileImageUrl(imageUrl);
+                        uploadedImageUrl = imageUrl;
                         setProfileImage(imageUrl); // 🔥 Actualizar el estado con la URL de Supabase
                     }
                 } catch (imageError) {
@@ -472,6 +473,8 @@ export default function EditarPerfilScreen() {
                 generos: selectedGeneros,
                 descripcion_largo: djDescripcion,
                 ubicacion: djUbicacion,
+                // 🔥 NUEVO: Guardar imagen de DJ en dj_profiles
+                ...(uploadedImageUrl && { imagen_url: uploadedImageUrl }),
                 // 🎛️ Agregar equipamiento
                 cuenta_con_equipamiento: cuentaConEquipamiento,
                 equipamiento: selectedEquipamiento,
@@ -489,22 +492,22 @@ export default function EditarPerfilScreen() {
                 await AsyncStorage.setItem('@mivok/is_dj_registered', 'true');
                 await AsyncStorage.setItem('@mivok/current_user_name', djNombre);
                 console.log('💾 Nombre de DJ guardado en AsyncStorage:', djNombre);
-                
+
                 // También actualizar la imagen en AsyncStorage si hay una nueva
                 if (profileImage) {
                     await AsyncStorage.setItem('@mivok/profile_image', profileImage);
                     console.log('💾 Imagen de perfil de DJ actualizada en AsyncStorage');
                 }
-                
+
                 // 🔥 Guardar fotos de la galería
                 for (let i = 0; i < galleryImages.length; i++) {
                     const photo = galleryImages[i];
-                    
+
                     // Solo procesar fotos nuevas (que vienen como URIs locales)
                     if (photo.isNew && photo.url.startsWith('file://')) {
                         try {
                             console.log(`📸 Subiendo foto de galería ${i + 1}...`);
-                            
+
                             // Convertir a base64
                             const response = await fetch(photo.url);
                             const blob = await response.blob();
@@ -513,10 +516,10 @@ export default function EditarPerfilScreen() {
                                 reader.onloadend = () => resolve(reader.result as string);
                                 reader.readAsDataURL(blob);
                             });
-                            
+
                             const base64Pure = base64Data.split(',')[1] || base64Data;
                             const galleryUrl = await profileFunctions.uploadDJGalleryImage(user.id, base64Pure, `gallery_${i}`);
-                            
+
                             if (galleryUrl) {
                                 console.log(`✅ Foto de galería ${i + 1} subida`);
                                 await profileFunctions.addDJGalleryImage(user.id, galleryUrl, i);
@@ -527,7 +530,7 @@ export default function EditarPerfilScreen() {
                         }
                     }
                 }
-                
+
                 console.log('✅ Perfil de DJ guardado');
                 Alert.alert('Éxito', 'Perfil actualizado correctamente', [
                     { text: 'OK', onPress: () => router.back() },
@@ -741,7 +744,7 @@ export default function EditarPerfilScreen() {
                         {/* 🎛️ Equipamiento */}
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>🎛️ Equipamiento</Text>
-                            
+
                             {/* Cuenta con equipamiento */}
                             <View style={styles.section}>
                                 <Text style={styles.sectionSubtitle}>¿Cuentas con equipamiento?</Text>
@@ -812,7 +815,7 @@ export default function EditarPerfilScreen() {
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>Galería de fotos 📸</Text>
                             <Text style={styles.sectionSubtitle}>Agrega fotos que verán los clientes cuando busquen tu perfil</Text>
-                            
+
                             {/* Fotos actuales */}
                             {galleryImages.length > 0 && (
                                 <View style={styles.galleryGrid}>
@@ -839,7 +842,7 @@ export default function EditarPerfilScreen() {
                                     ))}
                                 </View>
                             )}
-                            
+
                             {/* Botón para agregar fotos */}
                             <TouchableOpacity
                                 style={styles.addGalleryButton}

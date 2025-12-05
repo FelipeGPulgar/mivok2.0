@@ -13,18 +13,18 @@ import { safeGetUser, supabase } from './supabase';
  */
 const handleAuthError = (authError: any): boolean => {
   if (!authError) return false;
-  
+
   // Verificar si es un AuthSessionMissingError esperado
-  const isSessionMissing = 
+  const isSessionMissing =
     authError?.name === 'AuthSessionMissingError' ||
     authError?.message?.includes('Auth session missing') ||
     authError?.message?.includes('Session missing');
-  
+
   if (isSessionMissing) {
     // No loguear errores de sesión faltante - es esperado cuando no hay sesión
     return true;
   }
-  
+
   // Loguear otros errores de autenticación
   console.error('❌ Error obteniendo usuario autenticado:', authError);
   return false;
@@ -38,7 +38,9 @@ export interface UserProfile {
   user_id: string;
   first_name: string;
   email: string;
+  provider?: string; // OAuth provider (google, microsoft, email)
   is_dj: boolean;
+  dj_nickname?: string; // 🔥 NUEVO: Apodo de DJ
   foto_url?: string;
   descripcion?: string;
   telefono?: string;
@@ -84,12 +86,13 @@ export const getCurrentProfile = async (): Promise<UserProfile | null> => {
 /**
  * 🔥 FUNCIÓN HELPER: Cargar datos de usuario desde múltiples fuentes
  * Prioridad: OAuth metadata > AsyncStorage session > Database
+ * @param isDJMode - Si está en modo DJ, devuelve el apodo DJ en lugar del nombre cliente
  */
-export const loadUserDataWithFallbacks = async (): Promise<{name: string, profileImage: string | null}> => {
+export const loadUserDataWithFallbacks = async (isDJMode: boolean = false): Promise<{ name: string, profileImage: string | null, email?: string }> => {
   try {
-    console.log('🔄 loadUserDataWithFallbacks: Iniciando...');
+    console.log('🔄 loadUserDataWithFallbacks: Iniciando...', { isDJMode });
     const { data: { user }, error } = await safeGetUser();
-    
+
     // Si no hay sesión OAuth activa, intentar cargar sesión email desde AsyncStorage
     if (error || !user) {
       console.log('🔍 No hay sesión OAuth, buscando sesión email en AsyncStorage...');
@@ -97,23 +100,26 @@ export const loadUserDataWithFallbacks = async (): Promise<{name: string, profil
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
         const emailSession = await AsyncStorage.getItem('@mivok/email_user_session');
         const storedNombre = await AsyncStorage.getItem('@mivok/current_user_name');
-        const storedApodo = await AsyncStorage.getItem('@mivok/current_user_apodo');
-        
-        console.log('🔍 AsyncStorage check:', { 
-          hasEmailSession: !!emailSession, 
-          storedNombre, 
-          storedApodo 
+        const storedApodo = await AsyncStorage.getItem('@mivok/dj_apodo');
+
+        console.log('🔍 AsyncStorage check:', {
+          hasEmailSession: !!emailSession,
+          storedNombre,
+          storedApodo,
+          isDJMode
         });
-        
+
         if (emailSession && (storedNombre || storedApodo)) {
-          // Para clientes: usar nombre, para DJs: usar apodo
-          const nameToUse = storedNombre; // Siempre usar el nombre para clientes
-          
+          // 🔥 ARREGLO: Si está en modo DJ y tiene apodo, usar apodo; si no, usar nombre
+          const nameToUse = (isDJMode && storedApodo) ? storedApodo : storedNombre;
+
           // 🔥 ARREGLO: Usar clave específica por email para las imágenes
           let profileImage = null;
+          let userEmail = '';
           try {
             const emailUser = JSON.parse(emailSession);
             const emailKey = emailUser?.email || 'unknown';
+            userEmail = emailKey;
             const imageKey = `@mivok/profile_image_${emailKey}`;
             const storedImage = await AsyncStorage.getItem(imageKey);
             if (storedImage) {
@@ -125,17 +131,18 @@ export const loadUserDataWithFallbacks = async (): Promise<{name: string, profil
           } catch (imageError) {
             console.warn('⚠️ Error cargando imagen desde AsyncStorage:', imageError);
           }
-          
-          console.log('✅ Datos desde AsyncStorage (email session):', nameToUse);
+
+          console.log('✅ Datos desde AsyncStorage (email session):', nameToUse, isDJMode ? '(modo DJ)' : '(modo cliente)');
           return {
             name: nameToUse,
-            profileImage: profileImage
+            profileImage: profileImage,
+            email: userEmail
           };
         }
       } catch (storageError) {
         console.warn('⚠️ Error leyendo AsyncStorage:', storageError);
       }
-      
+
       console.log('❌ No hay usuario autenticado ni sesión email');
       return { name: 'Usuario', profileImage: null };
     }
@@ -145,26 +152,37 @@ export const loadUserDataWithFallbacks = async (): Promise<{name: string, profil
     // 🔥 ARREGLO: Primero verificar el provider en la BD (fuente de verdad)
     const profileData = await getCurrentProfile();
     const dbProvider = profileData?.provider;
-    
+
     console.log('🔍 Provider desde BD:', dbProvider, 'vs OAuth metadata provider:', user.app_metadata?.provider);
-    
+
     // 1. Si el provider en BD es 'email', usar datos de AsyncStorage (no OAuth metadata)
     if (dbProvider === 'email') {
-      console.log('📧 Usuario detectado como EMAIL, buscando datos en AsyncStorage...');
-      
+      console.log('📧 Usuario detectado como EMAIL, buscando datos en AsyncStorage...', { isDJMode });
+
       try {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
         const storedNombre = await AsyncStorage.getItem('@mivok/current_user_name');
-        const storedApodo = await AsyncStorage.getItem('@mivok/current_user_apodo');
-        
-        if (storedNombre) {
+        const storedApodo = await AsyncStorage.getItem('@mivok/dj_apodo');
+
+        // 🔥 NUEVO: Priorizar apodo de DJ desde BD si existe
+        const djNicknameFromDB = profileData?.dj_nickname;
+        const apodoToUse = djNicknameFromDB || storedApodo;
+
+        console.log('🎵 Apodo DJ - BD:', djNicknameFromDB, 'AsyncStorage:', storedApodo, 'Final:', apodoToUse);
+
+        // 🔥 ARREGLO: Si está en modo DJ y tiene apodo, usar apodo; si no, usar nombre
+        const nameToUse = (isDJMode && apodoToUse) ? apodoToUse : storedNombre;
+
+        if (nameToUse) {
           // 🔥 ARREGLO: Usar clave específica por email para las imágenes
           let storedImage = null;
+          let userEmail = '';
           try {
             const emailSession = await AsyncStorage.getItem('@mivok/email_user_session');
             if (emailSession) {
               const emailUser = JSON.parse(emailSession);
               const emailKey = emailUser?.email || 'unknown';
+              userEmail = emailKey;
               const imageKey = `@mivok/profile_image_${emailKey}`;
               storedImage = await AsyncStorage.getItem(imageKey);
               console.log('📸 Buscando imagen para email:', emailKey, storedImage ? 'encontrada' : 'no encontrada');
@@ -172,17 +190,18 @@ export const loadUserDataWithFallbacks = async (): Promise<{name: string, profil
           } catch (imageError) {
             console.warn('⚠️ Error cargando imagen:', imageError);
           }
-          
-          console.log('✅ Datos desde AsyncStorage (usuario email):', storedNombre);
+
+          console.log('✅ Datos desde AsyncStorage (usuario email):', nameToUse, isDJMode ? '(modo DJ)' : '(modo cliente)');
           return {
-            name: storedNombre,
-            profileImage: storedImage ? `data:image/jpeg;base64,${storedImage}` : (profileData?.foto_url || null)
+            name: nameToUse,
+            profileImage: storedImage ? `data:image/jpeg;base64,${storedImage}` : (profileData?.foto_url || null),
+            email: userEmail
           };
         }
       } catch (storageError) {
         console.warn('⚠️ Error leyendo AsyncStorage:', storageError);
       }
-      
+
       // Fallback a datos de BD si no hay AsyncStorage
       console.log('⚠️ No hay datos en AsyncStorage, usando datos de BD');
       return {
@@ -190,14 +209,54 @@ export const loadUserDataWithFallbacks = async (): Promise<{name: string, profil
         profileImage: profileData?.foto_url || null
       };
     }
-    
-    // 2. Si el provider es Google/Microsoft, usar OAuth metadata
-    if (user.user_metadata?.full_name && (dbProvider === 'google' || dbProvider === 'microsoft')) {
-      console.log('✅ Datos desde OAuth metadata:', user.user_metadata.full_name);
-      return {
-        name: user.user_metadata.full_name.split(' ')[0],
-        profileImage: profileData?.foto_url || null
-      };
+
+    // 2. Si el provider es Google/Microsoft, priorizar datos de BD sobre OAuth metadata
+    if (dbProvider === 'google' || dbProvider === 'microsoft') {
+      console.log('🔍 Usuario Google/Microsoft - verificando datos en BD...');
+
+      // 🔥 NUEVO: Priorizar datos de BD si existen
+      const nameFromDB = profileData?.first_name;
+      const djNicknameFromDB = profileData?.dj_nickname;
+
+      // Si está en modo DJ y tiene apodo en BD, usar ese
+      if (isDJMode && djNicknameFromDB) {
+        console.log('✅ Usando apodo DJ desde BD:', djNicknameFromDB);
+
+        // 🔥 NUEVO: Cargar imagen de DJ desde dj_profiles si existe
+        let djProfileImage = profileData?.foto_url || null;
+        try {
+          const djProfile = await getCurrentDJProfile();
+          if (djProfile?.imagen_url) {
+            djProfileImage = djProfile.imagen_url;
+            console.log('📸 Usando imagen de perfil DJ desde dj_profiles');
+          }
+        } catch (error) {
+          console.warn('⚠️ No se pudo cargar imagen de DJ, usando imagen de cliente');
+        }
+
+        return {
+          name: djNicknameFromDB,
+          profileImage: djProfileImage
+        };
+      }
+
+      // Si tiene nombre personalizado en BD, usar ese
+      if (nameFromDB && nameFromDB !== user.user_metadata?.full_name) {
+        console.log('✅ Usando nombre personalizado desde BD:', nameFromDB);
+        return {
+          name: nameFromDB, // 🔥 ARREGLO: Retornar nombre completo, no solo el primero
+          profileImage: profileData?.foto_url || null
+        };
+      }
+
+      // Fallback a OAuth metadata si no hay datos personalizados en BD
+      if (user.user_metadata?.full_name) {
+        console.log('✅ Usando datos desde OAuth metadata:', user.user_metadata.full_name);
+        return {
+          name: user.user_metadata.full_name.split(' ')[0],
+          profileImage: profileData?.foto_url || null
+        };
+      }
     }
 
     // 3. Fallback final: Datos de la base de datos
@@ -273,7 +332,7 @@ export const updateProfile = async (
       console.warn('⚠️ Error en UPDATE:', error.message);
       console.warn('⚠️ Error CODE:', error.code);
       console.warn('⚠️ Error DETAILS:', error.details);
-      
+
       // Si falla, intentar con upsert
       console.log('🔄 Intentando UPSERT...');
       const { data: upsertData, error: upsertError } = await supabase
@@ -292,7 +351,7 @@ export const updateProfile = async (
         console.error('❌ Error UPSERT CODE:', upsertError.code);
         console.error('❌ Error UPSERT MESSAGE:', upsertError.message);
         console.error('❌ Error UPSERT DETAILS:', upsertError.details);
-        try { console.error('❌ Error en UPSERT (detalles):', JSON.stringify(upsertError)); } catch(e) { console.error('❌ Error en UPSERT (no serializable):', upsertError); }
+        try { console.error('❌ Error en UPSERT (detalles):', JSON.stringify(upsertError)); } catch (e) { console.error('❌ Error en UPSERT (no serializable):', upsertError); }
         return null;
       }
 
@@ -338,14 +397,14 @@ export const uploadProfileImage = async (
 ): Promise<string | null> => {
   try {
     console.log('📤 Iniciando carga de imagen...');
-    
+
     // Para usuarios email sin sesión OAuth, guardar en AsyncStorage temporalmente
     const { data: { user }, error: authError } = await safeGetUser();
     if (authError || !user) {
       console.log('⚠️ Sin sesión OAuth, guardando imagen en AsyncStorage...');
       try {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        
+
         // 🔥 ARREGLO: Usar clave específica por email
         const emailSession = await AsyncStorage.getItem('@mivok/email_user_session');
         if (emailSession) {
@@ -365,12 +424,12 @@ export const uploadProfileImage = async (
         return null;
       }
     }
-    
+
     // Para usuarios OAuth, intentar subir a Supabase Storage
     const timestamp = Date.now();
     const uniqueFileName = `${fileName}_${timestamp}.jpg`;
     const filePath = `${userId}/${uniqueFileName}`;
-    
+
     // Convertir base64 a Uint8Array para Supabase
     const byteCharacters = atob(base64Data);
     const byteNumbers = new Array(byteCharacters.length);
@@ -380,7 +439,7 @@ export const uploadProfileImage = async (
     const byteArray = new Uint8Array(byteNumbers);
 
     console.log('📤 Subiendo archivo a Supabase Storage...');
-    
+
     // Subir usando el Uint8Array directamente
     const { error } = await supabase.storage
       .from('profile_images')
@@ -394,7 +453,7 @@ export const uploadProfileImage = async (
       // Fallback a AsyncStorage si falla Supabase
       try {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        
+
         // 🔥 ARREGLO: Usar clave específica por email
         const emailSession = await AsyncStorage.getItem('@mivok/email_user_session');
         if (emailSession) {
@@ -515,8 +574,8 @@ export const updateProfileImageUrl = async (imageUrl: string): Promise<boolean> 
 
     if (updateError) {
       // Loguear todo el objeto de error para debugging (RLS, detalles, hint)
-      try { console.error('⚠️ Error en UPDATE (detalles):', JSON.stringify(updateError)); } catch(e) { console.error('⚠️ Error en UPDATE (no serializable):', updateError); }
-      
+      try { console.error('⚠️ Error en UPDATE (detalles):', JSON.stringify(updateError)); } catch (e) { console.error('⚠️ Error en UPDATE (no serializable):', updateError); }
+
       // Si falla, intentar con upsert (insert o update)
       // 🔥 NOTA: En Supabase JS client, upsert() espera el array de columnas de conflicto
       console.log('🔄 Intentando UPSERT con columna de conflicto: user_id');
@@ -531,8 +590,8 @@ export const updateProfileImageUrl = async (imageUrl: string): Promise<boolean> 
         });
 
       if (upsertError) {
-        try { console.error('❌ Error en UPSERT (detalles):', JSON.stringify(upsertError)); } catch(e) { console.error('❌ Error en UPSERT (no serializable):', upsertError); }
-        
+        try { console.error('❌ Error en UPSERT (detalles):', JSON.stringify(upsertError)); } catch (e) { console.error('❌ Error en UPSERT (no serializable):', upsertError); }
+
         // Si UPSERT también falla, intentar INSERT directo
         console.log('⚠️ UPSERT falló, intentando INSERT directo...');
         const { error: insertError } = await supabase
@@ -544,7 +603,7 @@ export const updateProfileImageUrl = async (imageUrl: string): Promise<boolean> 
           });
 
         if (insertError) {
-          try { console.error('❌ Error en INSERT (detalles):', JSON.stringify(insertError)); } catch(e) { console.error('❌ Error en INSERT (no serializable):', insertError); }
+          try { console.error('❌ Error en INSERT (detalles):', JSON.stringify(insertError)); } catch (e) { console.error('❌ Error en INSERT (no serializable):', insertError); }
           return false;
         }
         console.log('✅ Foto insertada correctamente con INSERT');
@@ -556,7 +615,7 @@ export const updateProfileImageUrl = async (imageUrl: string): Promise<boolean> 
 
     if (!updateResult || updateResult.length === 0) {
       console.log('ℹ️ Update retornó 0 filas, intentando insert...');
-      
+
       // Si no se actualizó nada, intentar insertar
       const { error: insertError } = await supabase
         .from('user_profiles')
@@ -567,7 +626,7 @@ export const updateProfileImageUrl = async (imageUrl: string): Promise<boolean> 
         });
 
       if (insertError) {
-        try { console.error('❌ Error insertando foto_url (detalles):', JSON.stringify(insertError)); } catch(e) { console.error('❌ Error insertando foto_url (no serializable):', insertError); }
+        try { console.error('❌ Error insertando foto_url (detalles):', JSON.stringify(insertError)); } catch (e) { console.error('❌ Error insertando foto_url (no serializable):', insertError); }
         return false;
       }
       console.log('✅ Foto insertada correctamente');
@@ -686,9 +745,9 @@ export const uploadDJGalleryImage = async (
 ): Promise<string | null> => {
   try {
     console.log('📤 Iniciando carga de foto de galería...');
-    
+
     const filePath = `${userId}/gallery/${Date.now()}_${fileName}`;
-    
+
     // Convertir base64 a Uint8Array
     const byteCharacters = atob(base64Data);
     const byteNumbers = new Array(byteCharacters.length);
@@ -698,7 +757,7 @@ export const uploadDJGalleryImage = async (
     const byteArray = new Uint8Array(byteNumbers);
 
     console.log('📤 Subiendo archivo a Supabase Storage...');
-    
+
     const { error } = await supabase.storage
       .from('dj_gallery')
       .upload(filePath, byteArray, {

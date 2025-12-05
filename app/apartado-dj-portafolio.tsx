@@ -1,18 +1,19 @@
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    Alert,
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import BottomNavBar from '../components/BottomNavBar';
 import { formatCLP } from '../lib/formatters';
+import * as profileFunctions from '../lib/profile-functions';
 import { getCurrentUser } from '../lib/supabase';
 import * as supabaseFunctions from '../lib/supabase-functions';
 
@@ -51,11 +52,11 @@ export default function ApartadoDJPortafolioScreen() {
         }
 
         const djFullProfile = await supabaseFunctions.getDJWithDetails(user.id);
-        
+
         if (djFullProfile) {
           // Cargar datos del usuario con fallbacks
-          const userData = await profileFunctions.loadUserDataWithFallbacks();
-          
+          const userData = await profileFunctions.loadUserDataWithFallbacks(true); // isDJMode = true
+
           const convertedDJ: DJProfile = {
             id: djFullProfile.user_id,
             nombre: userData.name || djFullProfile.nombre || 'DJ Profesional',
@@ -72,7 +73,7 @@ export default function ApartadoDJPortafolioScreen() {
             equipamiento: djFullProfile.equipamiento,
           };
           setDj(convertedDJ);
-          
+
           // 🎛️ Cargar equipamiento del DJ
           if (djFullProfile.cuenta_con_equipamiento) {
             setCuentaConEquipamiento(djFullProfile.cuenta_con_equipamiento);

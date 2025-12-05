@@ -1,22 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { useState } from 'react';
 import {
-    Alert,
-    Animated,
-    Dimensions,
-    Platform,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Animated,
+  Dimensions,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { sendWelcomeEmail } from '../lib/email-service';
 import { checkEmailProvider, deleteUserAccount, supabase } from '../lib/supabase';
 
 const { width, height } = Dimensions.get('window');
@@ -63,16 +61,16 @@ const Particle = React.memo(({ index }: ParticleProps) => {
 
   const createParticleAnimation = React.useCallback(() => {
     if (isAnimating.current) return;
-    
+
     isAnimating.current = true;
-    
+
     const startX = Math.random() * width;
     animatedValues.x.setValue(startX);
     animatedValues.y.setValue(height + 50 + Math.random() * 100);
     animatedValues.opacity.setValue(0);
-    
+
     const endX = startX + particleConfig.horizontalDrift;
-    
+
     animationRef.current = Animated.parallel([
       Animated.timing(animatedValues.y, {
         toValue: -100,
@@ -190,7 +188,7 @@ export default function LoginEmailScreen() {
   // Función de login con email
   const handleEmailLogin = async () => {
     if (loading) return;
-    
+
     if (!email || !password) {
       Alert.alert('Error', 'Por favor ingresa email y contraseña');
       return;
@@ -201,19 +199,19 @@ export default function LoginEmailScreen() {
     try {
       // Primero verificar si el email ya existe con otro provider
       const emailCheck = await checkEmailProvider(email);
-      
+
       if (emailCheck.error) {
         Alert.alert('Error', 'No se pudo verificar el email. Intenta nuevamente.');
         setLoading(false);
         return;
       }
-      
+
       if (emailCheck.exists && emailCheck.provider && emailCheck.provider !== 'email') {
         // Email ya existe con Google o Microsoft
-        const providerName = emailCheck.provider === 'google' ? 'Google' : 
-                           emailCheck.provider === 'microsoft' ? 'Microsoft' : 
-                           emailCheck.provider;
-        
+        const providerName = emailCheck.provider === 'google' ? 'Google' :
+          emailCheck.provider === 'microsoft' ? 'Microsoft' :
+            emailCheck.provider;
+
         Alert.alert(
           '⚠️ Cuenta ya registrada',
           `Este email ya está registrado con ${providerName}.\n\n¿Qué te gustaría hacer?`,
@@ -231,9 +229,9 @@ export default function LoginEmailScreen() {
               style: 'destructive',
               onPress: async () => {
                 console.log('🗑️ Usuario eligió eliminar cuenta existente');
-                
+
                 const deleteResult = await deleteUserAccount(email);
-                
+
                 if (deleteResult.success) {
                   Alert.alert(
                     '✅ Cuenta eliminada',
@@ -250,10 +248,10 @@ export default function LoginEmailScreen() {
         );
         return;
       }
-      
+
       // Si el email no existe o ya es de tipo email, proceder normalmente
       await proceedWithEmailLogin();
-      
+
     } catch (error: any) {
       console.error('❌ Error inesperado en verificación:', error);
       Alert.alert('Error', 'Ocurrió un error inesperado. Intenta nuevamente.');
@@ -263,15 +261,8 @@ export default function LoginEmailScreen() {
 
   // Función para registrarse (cuando no tiene cuenta)
   const handleRegister = async () => {
-    if (loading) return;
-    
-    if (!email || !password || !confirmPassword) {
+    if (!email.trim() || !password.trim()) {
       Alert.alert('Error', 'Por favor completa todos los campos');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      Alert.alert('Error', 'Las contraseñas no coinciden');
       return;
     }
 
@@ -283,30 +274,77 @@ export default function LoginEmailScreen() {
     setLoading(true);
 
     try {
-      // Usar nombre temporal del email hasta que configure su perfil
-      const tempName = email.split('@')[0];
-      
-      // Simplemente crear el perfil con un UUID generado
-      const generateUUID = () => {
-        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-          const r = Math.random() * 16 | 0;
-          const v = c === 'x' ? r : (r & 0x3 | 0x8);
-          return v.toString(16);
+      // 🔥 NUEVO: Primero verificar si el email ya existe
+      const { data: existingProfile } = await supabase
+        .from('user_profiles')
+        .select('email')
+        .eq('email', email.trim().toLowerCase())
+        .single();
+
+      if (existingProfile) {
+        // El email ya existe, intentar iniciar sesión
+        console.log('📧 Email ya registrado, intentando iniciar sesión...');
+
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password: password.trim(),
         });
-      };
 
-      const userId = generateUUID();
+        if (signInError) {
+          // Error al iniciar sesión (probablemente contraseña incorrecta)
+          Alert.alert(
+            'Email ya registrado',
+            'Este email ya tiene una cuenta, pero la contraseña es incorrecta. Por favor verifica tu contraseña.',
+            [{ text: 'OK' }]
+          );
+          setLoading(false);
+          return;
+        }
 
-      // Crear perfil directamente (sin autenticación de Supabase)
+        // Login exitoso
+        console.log('✅ Login exitoso con email existente');
+        Alert.alert('¡Bienvenido de nuevo!', 'Has iniciado sesión correctamente', [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Redirigir a home-cliente por defecto
+              router.replace('/home-cliente');
+            }
+          }
+        ]);
+        return;
+      }
+
+      // El email NO existe, proceder con el registro
+      console.log('📝 Email nuevo, creando cuenta...');
+
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password: password.trim(),
+      });
+
+      if (signUpError) {
+        console.error('❌ Error en signUp:', signUpError);
+        Alert.alert('Error', `No se pudo crear la cuenta: ${signUpError.message}`);
+        setLoading(false);
+        return;
+      }
+
+      if (!signUpData.user) {
+        Alert.alert('Error', 'No se pudo crear el usuario');
+        setLoading(false);
+        return;
+      }
+
+      console.log('✅ Usuario creado en Auth:', signUpData.user.id);
+
+      // Crear perfil en user_profiles
       const { data: profileData, error: profileError } = await supabase
         .from('user_profiles')
         .insert({
-          user_id: userId,
+          user_id: signUpData.user.id,
           email: email.trim().toLowerCase(),
-          provider: 'email',
-          first_name: tempName, // Nombre temporal del email
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          first_name: '',
           is_dj: false
         })
         .select()
@@ -314,36 +352,28 @@ export default function LoginEmailScreen() {
 
       if (profileError) {
         console.error('❌ Error creando perfil:', profileError);
-        Alert.alert('Error', `No se pudo crear la cuenta: ${profileError.message}`);
+        Alert.alert('Error', 'No se pudo crear el perfil de usuario');
+        setLoading(false);
         return;
       }
 
-      console.log('✅ Cuenta creada exitosamente');
-      
-      // Guardar información del usuario para la sesión temporal
-      await AsyncStorage.multiSet([
-        ['@mivok/current_user_id', userId],
-        ['@mivok/current_user_email', email.toLowerCase()],
-        ['@mivok/current_user_name', tempName], // Nombre temporal
-        ['@mivok/current_user_provider', 'email']
-      ]);
-      
-      // Intentar enviar email de bienvenida (silencioso)
-      try {
-        await sendWelcomeEmail(email, tempName);
-      } catch (emailError: any) {
-        // Silenciar completamente errores de email
-      }
+      console.log('✅ Perfil creado:', profileData);
 
+      // Redirigir a registro de cliente
       Alert.alert(
-        '🎉 ¡Cuenta creada!', 
-        `¡Hola! Tu cuenta ha sido creada exitosamente. ¿Qué quieres hacer en Mivok?`,
-        [{ text: 'Continuar', onPress: () => router.replace('/bienvenida') }]
+        '¡Cuenta creada!',
+        'Tu cuenta ha sido creada exitosamente. Ahora completa tu perfil.',
+        [
+          {
+            text: 'Continuar',
+            onPress: () => router.replace('/registro-cliente')
+          }
+        ]
       );
 
-    } catch (error: any) {
-      console.error('❌ Error inesperado en registro:', error);
-      Alert.alert('Error', 'Ocurrió un error inesperado. Intenta nuevamente.');
+    } catch (error) {
+      console.error('❌ Error en handleRegister:', error);
+      Alert.alert('Error', 'Ocurrió un error inesperado');
     } finally {
       setLoading(false);
     }
@@ -408,7 +438,7 @@ export default function LoginEmailScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      
+
       {/* Background animado */}
       <Animated.View style={StyleSheet.absoluteFillObject}>
         <LinearGradient
@@ -426,7 +456,7 @@ export default function LoginEmailScreen() {
 
       {/* Header con botón de regreso */}
       <View style={styles.header}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
         >
@@ -519,14 +549,14 @@ export default function LoginEmailScreen() {
             disabled={loading || !email || !password || (isRegistering && !confirmPassword)}
           >
             <LinearGradient
-              colors={loading || !email || !password || (isRegistering && !confirmPassword) 
-                ? ['#ccc', '#999'] 
+              colors={loading || !email || !password || (isRegistering && !confirmPassword)
+                ? ['#ccc', '#999']
                 : ['#667eea', '#764ba2']}
               style={styles.loginGradient}
             >
               <Text style={styles.loginButtonText}>
-                {loading ? '⏳ Procesando...' : 
-                 isRegistering ? '🚀 Crear Cuenta' : '🚀 Iniciar Sesión'}
+                {loading ? '⏳ Procesando...' :
+                  isRegistering ? '🚀 Crear Cuenta' : '🚀 Iniciar Sesión'}
               </Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -540,8 +570,8 @@ export default function LoginEmailScreen() {
             }}
           >
             <Text style={styles.switchModeText}>
-              {isRegistering 
-                ? '¿Ya tienes cuenta? Inicia sesión' 
+              {isRegistering
+                ? '¿Ya tienes cuenta? Inicia sesión'
                 : '¿No tienes cuenta? Regístrate aquí'}
             </Text>
           </TouchableOpacity>

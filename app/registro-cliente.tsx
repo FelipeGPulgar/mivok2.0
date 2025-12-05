@@ -2,17 +2,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useState } from "react";
 import {
-    Alert,
-    Dimensions,
-    KeyboardAvoidingView,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  Alert,
+  Dimensions,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
 import { AnimatedBackground } from '../components/AnimatedBackground';
 import { getCurrentUser, supabase } from '../lib/supabase';
@@ -50,7 +50,7 @@ export default function RegistroCliente() {
     }
 
     setLoading(true);
-    
+
     try {
       // Obtener usuario actual
       const user = await getCurrentUser();
@@ -61,13 +61,14 @@ export default function RegistroCliente() {
       }
 
       console.log('💾 Guardando perfil del cliente...');
-      
+
       // Actualizar perfil en la base de datos
       const { error: updateError } = await supabase
         .from('user_profiles')
         .update({
-          first_name: nombre.trim(),
+          first_name: `${nombre.trim()} ${apellido.trim()}`, // Nombre completo
           last_name: apellido.trim(),
+          dj_nickname: apodo.trim(), // 🔥 NUEVO: Guardar apodo de DJ
           updated_at: new Date().toISOString()
         })
         .eq('user_id', user.id);
@@ -78,7 +79,7 @@ export default function RegistroCliente() {
         setLoading(false);
         return;
       } else {
-        console.log('✅ Perfil actualizado en BD');
+        console.log('✅ Perfil actualizado en BD con apodo DJ:', apodo.trim());
       }
 
       // También guardar datos localmente como respaldo
@@ -97,18 +98,18 @@ export default function RegistroCliente() {
         ['@mivok/client_profile', JSON.stringify(clientData)],
         ['@mivok/email_user_session', JSON.stringify({ userId: user.id, email: user.email })]
       ]);
-      
+
       console.log('✅ Datos guardados en AsyncStorage:', {
         nombre: nombre.trim(),
         apodo: apodo.trim(),
         sessionSaved: true
       });
-      
+
       Alert.alert(
         '¡Perfil completado!',
         `¡Hola ${nombre}! Tu perfil está listo. ¡Ahora puedes buscar DJs increíbles!`,
-        [{ 
-          text: 'Continuar', 
+        [{
+          text: 'Continuar',
           onPress: () => {
             // Usar replace para no poder volver atrás
             router.replace('/home-cliente');
@@ -126,13 +127,13 @@ export default function RegistroCliente() {
 
   return (
     <AnimatedBackground>
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <SafeAreaView style={styles.safeArea}>
-          <ScrollView 
-            style={styles.scrollContainer} 
+          <ScrollView
+            style={styles.scrollContainer}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
           >
@@ -145,7 +146,7 @@ export default function RegistroCliente() {
             <View style={styles.formContainer}>
               {/* Campo Nombre */}
               <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>¿Cuál es tu nombre? <Text style={{color: '#FF6B6B'}}>*</Text></Text>
+                <Text style={styles.fieldLabel}>¿Cuál es tu nombre? <Text style={{ color: '#FF6B6B' }}>*</Text></Text>
                 <TextInput
                   style={styles.textInput}
                   value={nombre}
@@ -158,7 +159,7 @@ export default function RegistroCliente() {
 
               {/* Campo Apellido */}
               <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>¿Cuál es tu apellido? <Text style={{color: '#FF6B6B'}}>*</Text></Text>
+                <Text style={styles.fieldLabel}>¿Cuál es tu apellido? <Text style={{ color: '#FF6B6B' }}>*</Text></Text>
                 <TextInput
                   style={styles.textInput}
                   value={apellido}
@@ -171,7 +172,7 @@ export default function RegistroCliente() {
 
               {/* Campo Apodo */}
               <View style={styles.fieldContainer}>
-                <Text style={styles.fieldLabel}>Pon tu apodo de DJ <Text style={{color: '#FF6B6B'}}>*</Text></Text>
+                <Text style={styles.fieldLabel}>Pon tu apodo de DJ <Text style={{ color: '#FF6B6B' }}>*</Text></Text>
                 <TextInput
                   style={styles.textInput}
                   value={apodo}
@@ -185,8 +186,8 @@ export default function RegistroCliente() {
 
             {/* Botón de acción */}
             <View style={styles.buttonsContainer}>
-              <TouchableOpacity 
-                style={[styles.nextButton, loading && styles.buttonDisabled]} 
+              <TouchableOpacity
+                style={[styles.nextButton, loading && styles.buttonDisabled]}
                 onPress={handleContinuar}
                 disabled={loading}
               >
@@ -195,7 +196,7 @@ export default function RegistroCliente() {
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.backButton}
                 onPress={() => router.back()}
                 disabled={loading}
