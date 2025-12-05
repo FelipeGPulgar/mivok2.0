@@ -148,7 +148,7 @@ export default function BilleteraScreen() {
 
             <View style={styles.balanceContainer}>
                 <View style={[styles.balanceCard, { backgroundColor: 'rgba(74, 222, 128, 0.1)', borderColor: '#4ade80' }]}>
-                    <Text style={styles.balanceLabel}>Saldo Disponible</Text>
+                    <Text style={styles.balanceLabel}>Saldo Transferido</Text>
                     <Text style={[styles.balanceValue, { color: '#4ade80' }]}>
                         ${saldoDisponible.toLocaleString('es-CL')}
                     </Text>

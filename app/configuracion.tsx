@@ -3,19 +3,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TouchableOpacity,
-  View
+    Alert,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BottomNavBar from '../components/BottomNavBar';
 import { useColorScheme } from '../hooks/useColorScheme';
 import * as profileFunctions from '../lib/profile-functions';
 import { useRole } from '../lib/RoleContext';
+import { setCurrentUserMode } from '../lib/user-mode-functions';
 
 interface SwitchSettingItem {
   icon: string;
@@ -44,7 +45,7 @@ interface SettingsSection {
 export default function ConfiguracionScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { isDJ, isLoading } = useRole();
+  const { isDJ, isLoading, refreshMode } = useRole();
   const [hasDJProfile, setHasDJProfile] = useState<boolean | null>(null);
 
   const isDJMode = params.mode === 'dj' || (isDJ && params.mode !== 'client');
@@ -267,11 +268,26 @@ export default function ConfiguracionScreen() {
           title: isDJMode ? 'Cambiar a modo Cliente' : 'Cambiar a modo DJ',
           subtitle: isDJMode ? 'Ver la app como cliente' : 'Volver a gestionar mi perfil DJ',
           type: 'navigate',
-          onPress: () => {
-            if (isDJMode) {
-              router.push('/home-cliente');
-            } else {
-              router.push('/home-dj');
+          onPress: async () => {
+            try {
+              if (isDJMode) {
+                // Cambiar a modo cliente
+                console.log('🔄 Cambiando a modo cliente...');
+                await setCurrentUserMode('cliente');
+                await refreshMode();
+                router.push('/home-cliente');
+                console.log('✅ Cambio a modo cliente completado');
+              } else {
+                // Cambiar a modo DJ
+                console.log('🔄 Cambiando a modo DJ...');
+                await setCurrentUserMode('dj');
+                await refreshMode();
+                router.push('/home-dj');
+                console.log('✅ Cambio a modo DJ completado');
+              }
+            } catch (error) {
+              console.error('❌ Error al cambiar modo:', error);
+              Alert.alert('Error', 'No se pudo cambiar el modo. Intenta de nuevo.');
             }
           },
         }

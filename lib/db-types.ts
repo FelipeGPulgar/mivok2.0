@@ -90,6 +90,11 @@ export interface ProposalRow {
   dj_id: UUID;
   monto: number;
   monto_contraoferta: number | null;
+  // Nuevos campos para comisión
+  monto_sin_comision: number | null; // Lo que recibe el DJ
+  porcentaje_comision: number | null; // % de comisión (default 10.0)
+  monto_comision: number | null; // Cantidad de comisión en pesos
+  monto_con_comision: number | null; // Total que paga el cliente
   horas_duracion: number; // numeric
   detalles: string | null;
   estado: ProposalEstado;

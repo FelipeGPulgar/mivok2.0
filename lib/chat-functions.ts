@@ -586,6 +586,29 @@ export const respondToProposal = async (
 
     console.log('✅ Respuesta a propuesta enviada');
 
+    // 2.5️⃣ ACTUALIZAR ESTADO EN LA TABLA PROPOSALS (CRÍTICO)
+    if (originalMessage) {
+      const dbProposalId = originalMessage.metadata?.proposal?.id || originalProposalMessageId;
+      
+      try {
+        const { error: updateProposalError } = await supabase
+          .from('proposals')
+          .update({ 
+            estado: proposalResponse.estado,
+            aceptada_at: proposalResponse.estado === 'aceptada' ? new Date().toISOString() : null
+          })
+          .eq('id', dbProposalId);
+
+        if (updateProposalError) {
+          console.error('❌ Error actualizando estado de propuesta en DB:', updateProposalError);
+        } else {
+          console.log('✅ Estado de propuesta actualizado en DB:', proposalResponse.estado);
+        }
+      } catch (error) {
+        console.error('❌ Error al actualizar propuesta:', error);
+      }
+    }
+
     // 🔔 Notificaciones: ahora se generan en la base de datos mediante trigger
     // para evitar problemas con RLS cuando el cliente no presenta el token JWT.
 

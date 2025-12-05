@@ -3,16 +3,20 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import BottomNavBar from '../components/BottomNavBar';
+import * as eventsFunctions from '../lib/events-functions';
 import { useNotifications } from '../lib/NotificationContext';
 import * as notificationManager from '../lib/notifications';
 import * as profileFunctions from '../lib/profile-functions';
 import { getCurrentUser } from '../lib/supabase';
+import * as supabaseFunctions from '../lib/supabase-functions';
 
 export default function HomeDJScreen() {
   const router = useRouter();
   const [apodoDJ, setApodoDJ] = useState('DJ');
   const [loading, setLoading] = useState(true);
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [ganancias, setGanancias] = useState<number>(0);
+  const [trabajos, setTrabajos] = useState<number>(0);
   // 🔔 Usar el contexto de notificaciones
   const { unreadCount } = useNotifications();
 
@@ -45,6 +49,9 @@ export default function HomeDJScreen() {
           const userName = user.user_metadata?.full_name?.split(' ')[0] || 'DJ';
           setApodoDJ(userName);
         }
+
+        // Cargar ganancias y trabajos
+        await cargarEstadisticas(user.id);
       }
     } catch (error) {
       console.error('❌ Error obteniendo perfil DJ:', error);
@@ -53,6 +60,47 @@ export default function HomeDJScreen() {
       setLoading(false);
     }
   }, []);
+
+  // Función para cargar estadísticas (ganancias y trabajos)
+  const cargarEstadisticas = async (userId: string) => {
+    try {
+      // Obtener eventos del DJ
+      const eventos = await eventsFunctions.listEventsForUser(userId, 'dj');
+      console.log(`📊 Eventos obtenidos: ${eventos.length}`);
+      
+      // Contar trabajos completados
+      const eventosCompletados = eventos.filter(evento => evento.estado === 'completado');
+      setTrabajos(eventosCompletados.length);
+      
+      // Calcular ganancias de eventos completados (monto sin comisión para el DJ)
+      let gananciasTotales = 0;
+      
+      for (const evento of eventosCompletados) {
+        // Obtener la propuesta relacionada para conseguir monto_sin_comision
+        try {
+          const { data: propuesta } = await supabaseFunctions.getProposalById(evento.proposal_id);
+          if (propuesta?.monto_sin_comision) {
+            gananciasTotales += propuesta.monto_sin_comision;
+          } else {
+            // Fallback: calcular como 90% del monto final si no hay campo nuevo
+            gananciasTotales += Math.round(evento.monto_final * 0.9);
+          }
+        } catch {
+          // Fallback en caso de error
+          gananciasTotales += Math.round(evento.monto_final * 0.9);
+        }
+      }
+        
+      setGanancias(gananciasTotales);
+      
+      console.log(`💰 Ganancias calculadas: $${gananciasTotales} de ${eventosCompletados.length} trabajos`);
+    } catch (error) {
+      console.error('❌ Error cargando estadísticas:', error);
+      // En caso de error, mostrar al menos algo
+      setGanancias(0);
+      setTrabajos(0);
+    }
+  };
 
   // Cargar imagen de perfil cada vez que la pantalla recibe foco
   useFocusEffect(
@@ -72,11 +120,20 @@ export default function HomeDJScreen() {
         }
       };
 
+      const recargarDatos = async () => {
+        const user = await getCurrentUser();
+        if (user) {
+          console.log('🔄 Recargando estadísticas en useFocusEffect...');
+          await cargarEstadisticas(user.id);
+        }
+      };
+
       // Cargar perfil e imagen cuando la pantalla recibe foco
       // Pequeño delay para asegurar que la query a Supabase esté completa
       setTimeout(() => {
         cargarPerfil();
         cargarImagenPerfil();
+        recargarDatos();
       }, 300);
     }, [cargarPerfil])
   );
@@ -133,11 +190,11 @@ export default function HomeDJScreen() {
             onPress={() => router.push('/billetera')}
           >
             <Text style={styles.statLabel}>Ganancias</Text>
-            <Text style={styles.statValue}>$0.00</Text>
+            <Text style={styles.statValue}>${ganancias.toLocaleString('es-CL')}</Text>
           </TouchableOpacity>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Trabajos</Text>
-            <Text style={styles.statValue}>0</Text>
+            <Text style={styles.statValue}>{trabajos}</Text>
           </View>
         </View>
 

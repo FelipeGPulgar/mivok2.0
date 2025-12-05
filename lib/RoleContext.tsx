@@ -1,18 +1,20 @@
 
 import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
+    createContext,
+    useCallback,
+    useContext,
+    useEffect,
+    useState,
 } from 'react';
-import * as profileFunctions from './profile-functions';
+import { getCurrentUserMode, UserMode } from './user-mode-functions';
 
 // Define el tipo para el valor del contexto
 interface RoleContextType {
   isDJ: boolean | null;
+  currentMode: UserMode | null;
   isLoading: boolean;
   checkRole: () => Promise<void>;
+  refreshMode: () => Promise<void>;
 }
 
 // Crea el contexto con un valor inicial undefined
@@ -32,19 +34,28 @@ export const RoleProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const [isDJ, setIsDJ] = useState<boolean | null>(null);
+  const [currentMode, setCurrentMode] = useState<UserMode | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Función para verificar el rol del usuario
   const checkRole = useCallback(async () => {
     setIsLoading(true);
     try {
-      console.log('Verificando el rol del usuario...');
-      const djProfile = await profileFunctions.getCurrentDJProfile();
-      const userIsDJ = !!djProfile;
-      console.log(userIsDJ ? 'El usuario es DJ.' : 'El usuario es Cliente.');
-      setIsDJ(userIsDJ);
+      console.log('🎭 Verificando el modo actual del usuario...');
+      const mode = await getCurrentUserMode();
+      
+      if (mode) {
+        console.log('✅ Modo actual:', mode);
+        setCurrentMode(mode);
+        setIsDJ(mode === 'dj');
+      } else {
+        console.log('⚠️ No hay modo configurado, asumiendo cliente');
+        setCurrentMode('cliente');
+        setIsDJ(false);
+      }
     } catch (error) {
-      console.error('Error al verificar el rol:', error);
+      console.error('❌ Error al verificar el modo:', error);
+      setCurrentMode('cliente');
       setIsDJ(false); // Asumir cliente en caso de error
     } finally {
       setIsLoading(false);
@@ -56,10 +67,32 @@ export const RoleProvider: React.FC<{ children: React.ReactNode }> = ({
     checkRole();
   }, [checkRole]);
 
+  // Función para refrescar el modo (sin mostrar loading)
+  const refreshMode = useCallback(async () => {
+    try {
+      console.log('🔄 Refrescando el modo actual del usuario...');
+      const mode = await getCurrentUserMode();
+      
+      if (mode) {
+        console.log('✅ Modo actualizado:', mode);
+        setCurrentMode(mode);
+        setIsDJ(mode === 'dj');
+      } else {
+        console.log('⚠️ No hay modo configurado, asumiendo cliente');
+        setCurrentMode('cliente');
+        setIsDJ(false);
+      }
+    } catch (error) {
+      console.error('❌ Error al refrescar el modo:', error);
+    }
+  }, []);
+
   const value = {
     isDJ,
+    currentMode,
     isLoading,
     checkRole,
+    refreshMode,
   };
 
   return <RoleContext.Provider value={value}>{children}</RoleContext.Provider>;

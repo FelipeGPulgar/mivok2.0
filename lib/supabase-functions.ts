@@ -307,6 +307,10 @@ export interface Proposal {
   client_id: string;
   dj_id: string;
   monto: number;
+  monto_sin_comision?: number; // 🔥 Agregado para comisiones
+  porcentaje_comision?: number; // 🔥 Agregado para comisiones
+  monto_comision?: number; // 🔥 Agregado para comisiones
+  monto_con_comision?: number; // 🔥 Agregado para comisiones
   monto_contraoferta: number | null;
   horas_duracion: number;
   detalles: string | null;
@@ -333,13 +337,19 @@ export const createProposal = async (
     const payload: any = {
       client_id: clientId,
       dj_id: djId,
-      monto: proposalData.monto,
-      horas_duracion: proposalData.horas_duracion,
+      monto: proposalData.monto, // RESTAURADO después de fix DB
+      monto_sin_comision: proposalData.monto_sin_comision, // RESTAURADO después de fix DB
+      porcentaje_comision: proposalData.porcentaje_comision, // RESTAURADO después de fix DB
+      monto_comision: proposalData.monto_comision, // RESTAURADO después de fix DB  
+      monto_con_comision: proposalData.monto_con_comision, // RESTAURADO después de fix DB
+      horas_duracion: proposalData.horas_duracion, // RESTAURADO después de fix DB
       detalles: proposalData.detalles ?? null,
       fecha_evento: proposalData.fecha_evento ?? null,
       ubicacion_evento: proposalData.ubicacion_evento ?? null,
       generos_solicitados: proposalData.generos_solicitados ?? null,
     };
+
+    console.log('🔍 DEBUG - Payload completo enviado a Supabase:', payload);
 
     const { data, error } = await supabase
       .from('proposals')
@@ -378,6 +388,30 @@ export const getUserProposals = async (userId: string): Promise<Proposal[]> => {
   } catch (error) {
     console.error('❌ Error en getUserProposals:', error);
     return [];
+  }
+};
+
+// Obtener propuesta por ID
+export const getProposalById = async (proposalId: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('proposals')
+      .select('*')
+      .eq('id', proposalId)
+      .single();
+
+    if (error) {
+      // Silenciar error PGRST116 (no encontrado) ya que es común
+      if (error.code !== 'PGRST116') {
+        console.error('❌ Error obteniendo propuesta por ID:', error);
+      }
+      return { data: null, error };
+    }
+
+    return { data, error: null };
+  } catch (error) {
+    console.error('❌ Error en getProposalById:', error);
+    return { data: null, error };
   }
 };
 
@@ -785,34 +819,109 @@ export const confirmPaymentEvent = async (paymentId: string): Promise<boolean> =
 // Obtener propuestas aceptadas sin pago para un cliente
 export const getUnpaidAcceptedProposals = async (clientId: string): Promise<Proposal[]> => {
   try {
-    // 1. Obtener propuestas aceptadas
+    console.log('🔍 Buscando propuestas aceptadas para cliente:', clientId);
+    
+    // 1. Obtener TODAS las propuestas del cliente para debug
+    const { data: allProposals, error: allError } = await supabase
+      .from('proposals')
+      .select('*')
+      .eq('client_id', clientId)
+      .order('created_at', { ascending: false });
+
+    if (allError) {
+      console.error('❌ Error obteniendo todas las propuestas:', allError);
+      return [];
+    }
+
+    console.log('📊 TODAS las propuestas del cliente:', allProposals?.length || 0);
+    if (allProposals && allProposals.length > 0) {
+      console.log('🔍 Estados de propuestas:', 
+        allProposals.reduce((acc, p) => {
+          acc[p.estado] = (acc[p.estado] || 0) + 1;
+          return acc;
+        }, {})
+      );
+      
+      // Log específico de propuestas aceptadas
+      const aceptadas = allProposals.filter(p => p.estado === 'aceptada');
+      console.log('✅ Propuestas ACEPTADAS encontradas:', aceptadas.length);
+      aceptadas.forEach(p => {
+        console.log(`✅ Propuesta aceptada ID ${p.id.slice(0, 8)}:`, {
+          monto: p.monto,
+          monto_con_comision: p.monto_con_comision,
+          detalles: p.detalles?.slice(0, 20),
+          created_at: p.created_at,
+          aceptada_at: p.aceptada_at
+        });
+      });
+    }
+
+    // 2. Obtener propuestas aceptadas
     const { data: proposals, error: proposalsError } = await supabase
       .from('proposals')
       .select('*')
       .eq('client_id', clientId)
       .eq('estado', 'aceptada');
 
+    console.log('📋 Query de propuestas aceptadas - resultado:', proposals?.length || 0);
+
     if (proposalsError) {
       console.error('❌ Error obteniendo propuestas aceptadas:', proposalsError);
       return [];
     }
 
-    if (!proposals || proposals.length === 0) return [];
+    if (!proposals || proposals.length === 0) {
+      console.log('⚠️ No hay propuestas aceptadas para este cliente');
+      return [];
+    }
 
-    // 2. Obtener pagos existentes para este cliente
+    // Log de propuestas aceptadas con sus montos
+    proposals.forEach(p => {
+      console.log(`💰 Propuesta ${p.id.slice(0, 8)}:`, {
+        monto: p.monto,
+        monto_sin_comision: p.monto_sin_comision,
+        monto_con_comision: p.monto_con_comision,
+        estado: p.estado
+      });
+    });
+
+    // 3. Obtener pagos existentes para este cliente
     const { data: payments, error: paymentsError } = await supabase
       .from('pagos')
-      .select('proposal_id')
+      .select('proposal_id, estado')
       .eq('client_id', clientId);
+
+    console.log('💳 Pagos existentes encontrados:', payments?.length || 0);
+    if (payments && payments.length > 0) {
+      console.log('💳 Estados de pagos:', 
+        payments.reduce((acc, p) => {
+          acc[p.estado] = (acc[p.estado] || 0) + 1;
+          return acc;
+        }, {})
+      );
+      console.log('💳 Proposal IDs con pagos:', payments.map(p => p.proposal_id?.slice(0, 8)));
+    }
 
     if (paymentsError) {
       console.error('❌ Error obteniendo pagos:', paymentsError);
       return []; // Fail safe
     }
 
-    // 3. Filtrar propuestas que ya tienen pago
+    // 4. Filtrar propuestas que ya tienen pago
     const paidProposalIds = new Set(payments?.map(p => p.proposal_id));
     const unpaidProposals = proposals.filter(p => !paidProposalIds.has(p.id));
+
+    console.log('💰 Propuestas sin pagar:', unpaidProposals.length);
+    
+    // Log detallado de propuestas sin pagar
+    unpaidProposals.forEach(p => {
+      console.log(`🔄 Propuesta sin pagar ${p.id.slice(0, 8)}:`, {
+        detalles: p.detalles,
+        monto_con_comision: p.monto_con_comision,
+        monto: p.monto,
+        fecha_evento: p.fecha_evento
+      });
+    });
 
     return unpaidProposals;
   } catch (error) {

@@ -3,8 +3,10 @@ import { useRouter } from 'expo-router';
 import React, { useRef, useState } from "react";
 import { Alert, Animated, Dimensions, KeyboardAvoidingView, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getCurrentUser } from '../lib/supabase';
+import { useRole } from '../lib/RoleContext';
+import { getCurrentUser, signOut } from '../lib/supabase';
 import * as supabaseFunctions from '../lib/supabase-functions';
+import { setCurrentUserMode } from '../lib/user-mode-functions';
 
 const { width, height } = Dimensions.get('window');
 
@@ -157,6 +159,7 @@ Particle.displayName = 'Particle';
 
 export default function Bienvenida() {
   const router = useRouter();
+  const { refreshMode } = useRole();
   const [checking, setChecking] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [currentIndex, setCurrentIndex] = React.useState(0);
@@ -225,6 +228,15 @@ export default function Bienvenida() {
       }
 
       console.log('🔍 Verificando si usuario es DJ...');
+      
+      // 🎭 Establecer modo DJ
+      const modeSet = await setCurrentUserMode('dj');
+      if (!modeSet) {
+        console.warn('⚠️ No se pudo establecer modo DJ');
+      } else {
+        // Refrescar el contexto de roles
+        await refreshMode();
+      }
 
       // Verificar si ya tiene perfil de DJ en dj_profiles
       const djProfile = await supabaseFunctions.getDJProfile(user.id);
@@ -244,6 +256,38 @@ export default function Bienvenida() {
       router.push('/registro-dj');
     } finally {
       setChecking(false);
+    }
+  };
+
+  const handleIniciarBuscarDJ = async () => {
+    try {
+      console.log('🔍 Estableciendo modo cliente...');
+      
+      // 🎭 Establecer modo cliente
+      const modeSet = await setCurrentUserMode('cliente');
+      if (!modeSet) {
+        console.warn('⚠️ No se pudo establecer modo cliente');
+      } else {
+        // Refrescar el contexto de roles
+        await refreshMode();
+      }
+      
+      router.replace('/home-cliente');
+    } catch (error) {
+      console.error('❌ Error estableciendo modo cliente:', error);
+      router.replace('/home-cliente');
+    }
+  };
+
+  const handleVolver = async () => {
+    try {
+      console.log('🚪 Cerrando sesión y volviendo al inicio...');
+      await signOut();
+      router.replace('/');
+    } catch (error) {
+      console.error('❌ Error al cerrar sesión:', error);
+      // Aunque falle el cierre de sesión, volver al inicio
+      router.replace('/');
     }
   };
 
@@ -297,7 +341,7 @@ export default function Bienvenida() {
 
         {/* Botones */}
         <View style={[styles.content, {marginTop: 260}]}> 
-          <TouchableOpacity style={styles.button} onPress={() => router.replace('/home-cliente')}>
+          <TouchableOpacity style={styles.button} onPress={handleIniciarBuscarDJ}>
             <Text style={styles.buttonText}>Iniciar a buscar DJ</Text>
           </TouchableOpacity>
 
@@ -311,8 +355,8 @@ export default function Bienvenida() {
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.buttonSmall} onPress={() => router.replace('/')}>
-            <Text style={styles.buttonText}>Volver</Text>
+          <TouchableOpacity style={styles.buttonLogout} onPress={handleVolver}>
+            <Text style={styles.buttonLogoutText}>Cerrar sesión</Text>
           </TouchableOpacity>
         </View>
 
@@ -387,6 +431,21 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     alignItems: "center",
     marginTop: 10,
+  },
+  buttonLogout: {
+    width: 140,
+    backgroundColor: "#ff4444",
+    paddingVertical: 10,
+    borderRadius: 25,
+    alignItems: "center",
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: "#ff6666",
+  },
+  buttonLogoutText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
   },
   buttonDisabled: {
     opacity: 0.5,

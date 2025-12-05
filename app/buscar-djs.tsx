@@ -14,6 +14,7 @@ import BottomNavBar from '../components/BottomNavBar';
 import * as chatFunctions from '../lib/chat-functions';
 import { formatCLP } from '../lib/formatters';
 import { getAverageRatingForUser, listReviewsForUser } from '../lib/reviews-functions';
+import { useRole } from '../lib/RoleContext';
 import { getCurrentUser } from '../lib/supabase';
 import * as supabaseFunctions from '../lib/supabase-functions';
 
@@ -75,10 +76,12 @@ const DJS_MUESTRA: DJ[] = [
 
 export default function BuscarDJsScreen() {
   const router = useRouter();
+  const { currentMode } = useRole(); // Hook para obtener el modo actual
   const [searchText, setSearchText] = useState('');
   const [selectedGeneros, setSelectedGeneros] = useState<string[]>([]);
   const [filteredDJs, setFilteredDJs] = useState<DJ[]>([]);
   const [allDJs, setAllDJs] = useState<DJ[]>([]);
+  const [allOriginalDJs, setAllOriginalDJs] = useState<DJ[]>([]); // 📦 Lista completa sin filtros
   const [unreadBadges, setUnreadBadges] = useState<Map<string, number>>(new Map());
   const [currentUser, setCurrentUser] = useState<any>(null);
 
@@ -151,13 +154,25 @@ export default function BuscarDJsScreen() {
               imagen: djPhoto,
             };
           }));
-          setAllDJs(convertedDJs);
-          setFilteredDJs(convertedDJs);
-          console.log(`✅ Se cargaron ${convertedDJs.length} DJs`);
+          
+          // 🚫 Filtrar perfil propio si está en modo cliente (evitar auto-contratación)
+          let finalDJs = convertedDJs;
+          
+          // 📦 Guardar lista completa sin filtros
+          setAllOriginalDJs(convertedDJs);
+          
+          if (currentMode === 'cliente' && user?.id) {
+            finalDJs = convertedDJs.filter(dj => dj.id !== user.id);
+            console.log(`🚫 Modo cliente: Ocultando perfil propio. DJs filtrados: ${finalDJs.length}/${convertedDJs.length}`);
+          }
+          
+          setAllDJs(finalDJs);
+          setFilteredDJs(finalDJs);
+          console.log(`✅ Se cargaron ${finalDJs.length} DJs disponibles`);
 
           // Cargar badges de no leídos para cada DJ
           console.log('📬 Cargando mensajes no leídos...');
-          for (const dj of convertedDJs) {
+          for (const dj of finalDJs) {
             const unreadCount = await chatFunctions.getUnreadMessagesWithUser(user.id, dj.id);
             setUnreadBadges(prev => 
               new Map(prev).set(dj.id, unreadCount)
@@ -169,9 +184,30 @@ export default function BuscarDJsScreen() {
           setAllDJs(DJS_MUESTRA);
           setFilteredDJs(DJS_MUESTRA);
         }
+      } catch (error) {
+        console.error('❌ Error al cargar DJs:', error);
+        // Usar datos mock como fallback
+        setAllDJs(DJS_MUESTRA);
+        setFilteredDJs(DJS_MUESTRA);
+      }
+    };
 
-        // SUSCRIBIRSE A TODOS LOS MENSAJES NUEVOS (TIEMPO REAL)
-        console.log('🔔 Suscribiendo a mensajes en tiempo real...');
+    loadDJs();
+  }, [currentMode]); // ✅ Agregar currentMode para re-ejecutar cuando cambie el modo
+
+  // 🔔 useEffect separado SOLO para suscripciones de tiempo real (ejecutar UNA vez)
+  useEffect(() => {
+    let unsubscribeMessages: (() => void) | null = null;
+
+    const setupRealtimeSubscription = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (!user) {
+          console.log('ℹ️ Usuario no autenticado para suscripciones');
+          return;
+        }
+
+        console.log('🔔 Configurando suscripción única a mensajes...');
         unsubscribeMessages = chatFunctions.subscribeToAllMessages(
           user.id,
           (newMessage: any) => {
@@ -193,25 +229,41 @@ export default function BuscarDJsScreen() {
           }
         );
 
-        console.log('✅ Suscripción a tiempo real activa');
+        console.log('✅ Suscripción única configurada exitosamente');
       } catch (error) {
-        console.error('❌ Error al cargar DJs:', error);
-        // Usar datos mock como fallback
-        setAllDJs(DJS_MUESTRA);
-        setFilteredDJs(DJS_MUESTRA);
+        console.error('❌ Error configurando suscripción:', error);
       }
     };
 
-    loadDJs();
+    setupRealtimeSubscription();
 
-    // Limpiar suscripción al desmontar
     return () => {
       if (unsubscribeMessages) {
         console.log('🔌 Desuscribiendo de mensajes...');
         unsubscribeMessages();
       }
     };
-  }, []);
+  }, []); // ✅ Solo ejecutar UNA VEZ al montar el componente
+
+  // 🔄 useEffect separado para re-filtrar cuando cambie el modo (sin recargar DJs)
+  useEffect(() => {
+    if (allOriginalDJs.length > 0 && currentUser?.id) {
+      console.log('🔄 MODO CAMBIÓ - Re-filtrando DJs existentes...');
+      
+      let reFilteredDJs = allOriginalDJs;
+      
+      if (currentMode === 'cliente') {
+        // Filtrar perfil propio para modo cliente
+        reFilteredDJs = allOriginalDJs.filter(dj => dj.id !== currentUser.id);
+        console.log(`🚫 RE-FILTRO: Modo cliente - Ocultando perfil propio. DJs: ${reFilteredDJs.length}`);
+      } else {
+        console.log(`✅ RE-FILTRO: Modo ${currentMode} - Mostrando todos los DJs`);
+      }
+      
+      setAllDJs(reFilteredDJs);
+      setFilteredDJs(reFilteredDJs);
+    }
+  }, [currentMode, currentUser?.id, allOriginalDJs]); // Re-ejecutar cuando cambie el modo, usuario, o lista original
 
   // Función para aplicar todos los filtros
   const applyFilters = useCallback((text: string, generos: string[]) => {

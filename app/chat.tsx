@@ -1,20 +1,20 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert,
-  Dimensions,
-  FlatList,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    Dimensions,
+    FlatList,
+    Image,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
@@ -117,15 +117,53 @@ export default function ChatScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
-  const { isDJ } = useRole();
+  const { isDJ, currentMode } = useRole();
+  
   // Aceptar tanto userId como djId por compatibilidad
   const userId = params.userId as string || params.djId as string;
   const userName = params.userName as string || params.djName as string;
-
-  // Log inicial de parámetros
+  
+  // Log inicial de parámetros y modo
   useEffect(() => {
     console.log('📋 Parámetros del chat:', { userId, userName, params });
-  }, [userId, userName, params]);
+    console.log('🎭 Modo actual del usuario en chat:', { isDJ, currentMode });
+  }, [userId, userName, params, isDJ, currentMode]);
+
+  // Función para verificar qué propuestas ya fueron pagadas
+  const checkPaidProposals = useCallback(async () => {
+    if (!currentUser) return;
+    
+    try {
+      const { data: payments } = await supabaseFunctions.supabase
+        .from('pagos')
+        .select('proposal_id')
+        .eq('client_id', currentUser.id);
+      
+      if (payments) {
+        const paidIds = new Set(payments.map(p => p.proposal_id));
+        setPaidProposals(paidIds);
+        console.log('💳 Propuestas pagadas encontradas:', paidIds.size);
+      }
+    } catch (error) {
+      console.error('Error checking paid proposals:', error);
+    }
+  }, [currentUser]);
+
+  // Verificar pagos cuando cambie el usuario
+  useEffect(() => {
+    if (currentUser) {
+      checkPaidProposals();
+    }
+  }, [currentUser, checkPaidProposals]);
+
+  // Actualizar pagos cuando regrese de la pantalla de pago
+  useFocusEffect(
+    useCallback(() => {
+      if (currentUser) {
+        checkPaidProposals();
+      }
+    }, [currentUser, checkPaidProposals])
+  );
 
   // Estado
   const [dj, setDj] = useState<DJChat | null>(null);
@@ -148,6 +186,7 @@ export default function ChatScreen() {
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null);  // 🔥 Datos del usuario actual
   const [showMenu, setShowMenu] = useState(false);
   const [proposalStatus, setProposalStatus] = useState<'pending' | 'approved' | 'rejected' | 'counter' | null>(null);
+  const [paidProposals, setPaidProposals] = useState<Set<string>>(new Set()); // Track paid proposals
   const flatListRef = useRef<FlatList>(null);
 
   // Cargar usuario actual, DJ info y mensajes con suscripción en tiempo real
@@ -603,8 +642,27 @@ export default function ChatScreen() {
     try {
       console.log('💰 Enviando propuesta...');
 
+      const montoSinComision = parseFloat(monto);
+      const porcentajeComision = 0.10; // 10% como decimal (0.10)
+      const montoComision = Math.round(montoSinComision * porcentajeComision);
+      const montoConComision = Math.round(montoSinComision + montoComision);
+
+      console.log('🔍 DEBUG - Valores calculados:', {
+        monto: monto,
+        montoSinComision: montoSinComision,
+        porcentajeComision: porcentajeComision,
+        montoComision: montoComision,
+        montoConComision: montoConComision,
+        horas: horas,
+        horasParsed: parseInt(horas)
+      });
+
       const proposalPayload: any = {
-        monto: parseFloat(monto),
+        monto: montoConComision, // Para compatibilidad, usar el monto total
+        monto_sin_comision: montoSinComision, // Lo que recibe el DJ
+        porcentaje_comision: porcentajeComision,
+        monto_comision: montoComision,
+        monto_con_comision: montoConComision, // Total que paga el cliente
         horas_duracion: parseInt(horas),
         detalles: detalles || null,
         fecha_evento: fechaStr,
@@ -612,9 +670,36 @@ export default function ChatScreen() {
         generos_solicitados: generos ? generos.split(',').map(g => g.trim()).filter(Boolean) : null,
       };
 
+      // 🔥 CORREGIDO: Identificar correctamente cliente y DJ usando currentMode
+      console.log('🔍 DEBUG - Antes de crear propuesta:', {
+        currentUserId: currentUser.id,
+        userId: userId,
+        isDJ: isDJ,
+        currentMode: currentMode,
+        userName: userName
+      });
+      
+      // Usar currentMode directamente para determinar roles
+      const isModeoDJ = currentMode === 'dj';
+      const clientId = isModeoDJ ? userId : currentUser.id;  // Si estoy en modo DJ, el cliente es userId; si soy cliente, soy yo
+      const djId = isModeoDJ ? currentUser.id : userId;      // Si estoy en modo DJ, soy yo; si soy cliente, el DJ es userId
+
+      console.log('🔍 DEBUG - IDs calculados:', {
+        clientId,
+        djId,
+        razonamiento: isModeoDJ ? 'Estoy en modo DJ, entonces userId es cliente' : 'Estoy en modo cliente, entonces userId es DJ',
+        verificarDatos: {
+          'Mi ID': currentUser.id,
+          'Usuario chat': userId,
+          'isDJ (deprecado)': isDJ,
+          'currentMode': currentMode,
+          'isModeoDJ': isModeoDJ
+        }
+      });
+
       const createdProposal = await supabaseFunctions.createProposal(
-        currentUser.id,
-        userId,
+        clientId,
+        djId,
         proposalPayload
       );
 
@@ -623,12 +708,13 @@ export default function ChatScreen() {
       }
 
       console.log('✅ Propuesta persistida en DB con id:', createdProposal.id);
+      console.log('🔍 IDs correctos - Cliente:', clientId, 'DJ:', djId, 'Soy DJ:', isDJ);
 
       // 2) Enviar la propuesta como mensaje con metadata
       const proposalDataForMessage = {
         id: createdProposal.id,
-        client_id: currentUser.id, // 🔥 Agregado para validación de botón de pago
-        dj_id: userId,             // 🔥 Agregado para consistencia
+        client_id: clientId, // 🔥 CORREGIDO: Usar el cliente real
+        dj_id: djId,         // 🔥 CORREGIDO: Usar el DJ real
         monto: createdProposal.monto,
         horas: createdProposal.horas_duracion || parseInt(horas),
         detalles: createdProposal.detalles || detalles || 'Sin detalles adicionales',
@@ -665,7 +751,7 @@ export default function ChatScreen() {
         setGeneros('');
         setProposalStatus(null);
 
-        Alert.alert('Éxito', 'Propuesta enviada al DJ');
+        Alert.alert('Éxito', currentMode === 'dj' ? 'Propuesta enviada al cliente' : 'Propuesta enviada al DJ');
       } else {
         throw new Error('No se pudo enviar la propuesta');
       }
@@ -897,15 +983,15 @@ export default function ChatScreen() {
           )}
 
           {/* Botón de pago para cliente cuando la propuesta está aceptada */}
-          {/* SE MUESTRA SOLO SI: Estado es aceptada Y el usuario actual es el CLIENTE de la propuesta */}
-          {proposal.estado === 'aceptada' && currentUser && currentUser.id === proposal.client_id && (
+          {/* SE MUESTRA SOLO SI: Estado es aceptada Y el usuario actual es el CLIENTE Y no está pagada */}
+          {proposal.estado === 'aceptada' && currentUser && currentUser.id === proposal.client_id && !paidProposals.has(proposal.id) && (
             <TouchableOpacity
               style={[styles.proposalButton, { backgroundColor: '#009EE3', marginTop: 8 }]}
               onPress={() => {
                 router.push({
                   pathname: '/pago-kushki-mock',
                   params: {
-                    monto: proposal.monto,
+                    monto: proposal.monto_con_comision || proposal.monto,
                     nombreEvento: proposal.detalles || 'Evento Mivok',
                     proposalId: proposal.id,
                     clientId: currentUser.id,
@@ -916,6 +1002,13 @@ export default function ChatScreen() {
             >
               <Text style={{ color: '#fff', fontWeight: 'bold', textAlign: 'center' }}>💳 Pagar Ahora</Text>
             </TouchableOpacity>
+          )}
+
+          {/* Mostrar estado de pago si ya fue pagado */}
+          {proposal.estado === 'aceptada' && currentUser && currentUser.id === proposal.client_id && paidProposals.has(proposal.id) && (
+            <View style={[styles.proposalButton, { backgroundColor: '#22c55e', marginTop: 8, opacity: 0.8 }]}>
+              <Text style={{ color: '#fff', fontWeight: 'bold', textAlign: 'center' }}>✅ Pagado</Text>
+            </View>
           )}
 
           <Text style={styles.proposalTime}>{proposal.timestamp}</Text>
@@ -1116,11 +1209,19 @@ export default function ChatScreen() {
 
                 <ScrollView style={styles.modalBody}>
                   <Text style={styles.modalDescription}>
-                    Ingresa los detalles de tu propuesta para que el DJ pueda evaluarla.
+                    {currentMode === 'dj' 
+                      ? 'Ingresa los detalles de tu propuesta para el cliente.'
+                      : 'Ingresa los detalles de tu propuesta para que el DJ pueda evaluarla.'
+                    }
                   </Text>
 
                   <View style={styles.formGroup}>
-                    <Text style={styles.formLabel}>Monto (CLP)</Text>
+                    <Text style={styles.formLabel}>
+                      {currentMode === 'dj' 
+                        ? 'Monto a cobrar al cliente (CLP)'
+                        : 'Monto para el DJ (CLP)'
+                      }
+                    </Text>
                     <TextInput
                       style={styles.formInput}
                       placeholder="50000"
@@ -1129,6 +1230,16 @@ export default function ChatScreen() {
                       onChangeText={(text) => setMonto(text.replace(/[^0-9]/g, ''))}
                       keyboardType="numeric"
                     />
+                    {monto && parseInt(monto) > 0 && (
+                      <View style={styles.comisionInfo}>
+                        <Text style={styles.comisionText}>
+                          💰 Comisión app (10%): ${Math.round(parseInt(monto) * 0.10).toLocaleString('es-CL')}
+                        </Text>
+                        <Text style={styles.comisionTotal}>
+                          💳 Total a cobrar al cliente: ${Math.round(parseInt(monto) * 1.10).toLocaleString('es-CL')}
+                        </Text>
+                      </View>
+                    )}
                   </View>
 
                   <View style={styles.formGroup}>
@@ -1276,7 +1387,9 @@ export default function ChatScreen() {
                     disabled={!monto || !horas}
                   >
                     <Text style={styles.submitButtonText}>
-                      {proposalStatus === 'approved' ? '✓ Aceptar' : proposalStatus === 'rejected' ? '✗ Rechazar' : proposalStatus === 'counter' ? '🔄 Contrapropuesta' : 'Enviar propuesta'}
+                      {proposalStatus === 'approved' ? '✓ Aceptar' : proposalStatus === 'rejected' ? '✗ Rechazar' : proposalStatus === 'counter' ? '🔄 Contrapropuesta' : 
+                        currentMode === 'dj' ? 'Enviar propuesta al cliente' : 'Enviar propuesta'
+                      }
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1746,6 +1859,24 @@ const styles = StyleSheet.create({
   },
   formGroup: {
     marginBottom: 16,
+  },
+  comisionInfo: {
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: '#0a1a0a',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2a5a2a',
+  },
+  comisionText: {
+    fontSize: 12,
+    color: '#66bb6a',
+    marginBottom: 4,
+  },
+  comisionTotal: {
+    fontSize: 13,
+    color: '#81c784',
+    fontWeight: '600',
   },
   formGroupRow: {
     flexDirection: 'row',

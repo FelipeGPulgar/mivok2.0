@@ -259,19 +259,36 @@ export default function EventosClienteScreen() {
                 style={[styles.secondaryAction, { backgroundColor: '#5B7EFF' }]}
                 onPress={() => {
                   closeOptions();
-                  router.push({
-                    pathname: '/event-confirmation',
-                    params: {
-                      eventId: selected.id,
-                      monto: selected.monto_final,
-                      role: 'client',
-                      nombreEvento: selected.ubicacion || 'Evento',
-                    }
-                  });
+                  // Si tiene comprobante o ambas partes confirmaron, ir al resumen
+                  if (selected.comprobante_url || (selected.client_confirmed_at && selected.dj_confirmed_at)) {
+                    router.push({
+                      pathname: '/comprobante-kushki',
+                      params: {
+                        eventId: selected.id,
+                        monto: selected.monto_final,
+                        nombreEvento: selected.ubicacion || 'Evento',
+                      }
+                    });
+                  } else {
+                    // Si no, ir a confirmar
+                    router.push({
+                      pathname: '/event-confirmation',
+                      params: {
+                        eventId: selected.id,
+                        monto: selected.monto_final,
+                        role: 'client',
+                        nombreEvento: selected.ubicacion || 'Evento',
+                      }
+                    });
+                  }
                 }}
               >
                 <Text style={styles.secondaryActionText}>
-                  {selected.client_confirmed_at ? 'Ver estado de confirmación' : 'Confirmar realización evento'}
+                  {(selected.comprobante_url || (selected.client_confirmed_at && selected.dj_confirmed_at)) 
+                    ? 'Ver boleta' 
+                    : selected.client_confirmed_at 
+                      ? 'Ver estado de confirmación' 
+                      : 'Confirmar realización evento'}
                 </Text>
               </TouchableOpacity>
             )}

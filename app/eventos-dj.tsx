@@ -257,19 +257,37 @@ export default function EventosDJScreen() {
                 style={[styles.secondaryAction, { backgroundColor: '#5B7EFF' }]}
                 onPress={() => {
                   closeOptions();
-                  router.push({
-                    pathname: '/event-confirmation',
-                    params: {
-                      eventId: selected.id,
-                      monto: selected.monto_final,
-                      role: 'dj',
-                      nombreEvento: selected.ubicacion || 'Evento',
-                    }
-                  });
+                  // 🔧 CORREGIDO: Solo ir a comprobante si el DJ ya confirmó
+                  if (selected.dj_confirmed_at && (selected.comprobante_url || selected.client_confirmed_at)) {
+                    // DJ ya confirmó y hay comprobante o cliente también confirmó
+                    router.push({
+                      pathname: '/comprobante-kushki',
+                      params: {
+                        eventId: selected.id,
+                        monto: selected.monto_final,
+                        nombreEvento: selected.ubicacion || 'Evento',
+                      }
+                    });
+                  } else {
+                    // DJ no ha confirmado, o necesita confirmar primero
+                    router.push({
+                      pathname: '/event-confirmation',
+                      params: {
+                        eventId: selected.id,
+                        monto: selected.monto_final,
+                        role: 'dj',
+                        nombreEvento: selected.ubicacion || 'Evento',
+                      }
+                    });
+                  }
                 }}
               >
                 <Text style={styles.secondaryActionText}>
-                  {selected.dj_confirmed_at ? 'Ver estado de confirmación' : 'Confirmar realización evento'}
+                  {selected.dj_confirmed_at && (selected.comprobante_url || selected.client_confirmed_at)
+                    ? 'Ver boleta' 
+                    : selected.dj_confirmed_at 
+                      ? 'Ver estado de confirmación' 
+                      : 'Confirmar realización evento'}
                 </Text>
               </TouchableOpacity>
             )}

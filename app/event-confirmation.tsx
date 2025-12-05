@@ -50,11 +50,22 @@ export default function EventConfirmationScreen() {
               }
             }
 
-            // Si el evento ya está completado (ambos confirmaron), redirigir o mostrar estado final
-            if (ev.estado === 'completado') {
+            // 🔍 Debug: Mostrar el estado actual del evento
+            console.log('🔍 Estado del evento:', {
+              eventId: ev.id,
+              estado: ev.estado,
+              dj_confirmed_at: ev.dj_confirmed_at,
+              client_confirmed_at: ev.client_confirmed_at,
+              role: role
+            });
+
+            // Si el evento ya está completado Y LA PERSONA ACTUAL ya confirmó, redirigir o mostrar estado final
+            const currentUserConfirmed = role === 'dj' ? ev.dj_confirmed_at : ev.client_confirmed_at;
+            if (ev.estado === 'completado' && currentUserConfirmed) {
+              console.log(`🎯 ${role.toUpperCase()} ya confirmó anteriormente, mostrando opciones finales`);
               Alert.alert(
                 '✅ Evento ya confirmado',
-                'Este evento ya ha sido confirmado por ambas partes.',
+                `Ya confirmaste que este evento se realizó correctamente.`,
                 [
                   {
                     text: role === 'dj'
@@ -97,6 +108,12 @@ export default function EventConfirmationScreen() {
               return;
             }
 
+            // 🔍 Si el evento está completado pero LA PERSONA ACTUAL no ha confirmado, mostrar pregunta
+            if (ev.estado === 'completado' && !currentUserConfirmed) {
+              console.log(`📝 Evento completado pero ${role.toUpperCase()} no ha confirmado, mostrando pantalla de confirmación`);
+              // No hacer return, continuar con la lógica normal de confirmación
+            }
+
             const myConfirmation = role === 'client' ? ev.client_confirmed_at : ev.dj_confirmed_at;
             if (myConfirmation) {
               setConfirmed(true);
@@ -124,13 +141,16 @@ export default function EventConfirmationScreen() {
       }
 
       if (bothConfirmed) {
-        // Ambos confirman: 100% al DJ
+        // Ambos confirman: Mostrar modal de confirmación y directo a pago
         Alert.alert(
-          '✅ Evento confirmado',
-          `Ambas partes han confirmado el evento.\n\n💰 Pago liberado:\n• DJ recibe: $ ${monto.toLocaleString('es-CL')} (100%)\n• Cliente: Pago completado\n\n${role === 'dj' ? 'Debes ingresar tus datos bancarios en el portal seguro.' : 'El pago será transferido en 1 día hábil.'}`,
+          '🎉 ¡Evento Completado!',
+          role === 'dj' 
+            ? 'Ambas partes han confirmado que el evento se realizó correctamente.\n\n💰 El pago completo será liberado a tu cuenta.\n\n¿Deseas gestionar tu pago ahora?'
+            : `El evento ha sido confirmado exitosamente.\n\n💰 Pago liberado al DJ: $${monto.toLocaleString('es-CL')}`,
           [
             {
-              text: role === 'dj' ? 'Ir a Portal Seguro (Kushki)' : 'Ver resumen',
+              text: role === 'dj' ? '💳 Gestionar Pago (Kushki)' : 'Ver Resumen',
+              style: 'default',
               onPress: () => {
                 if (role === 'dj') {
                   router.replace({
@@ -145,7 +165,7 @@ export default function EventConfirmationScreen() {
                       monto,
                       porcentajeDJ: 100,
                       porcentajeCliente: 0,
-                      motivo: 'Ambas partes confirmaron el evento',
+                      motivo: 'Evento completado exitosamente',
                       role,
                     }
                   });
@@ -153,7 +173,8 @@ export default function EventConfirmationScreen() {
               },
             },
             {
-              text: 'Cerrar',
+              text: 'Más Tarde',
+              style: 'cancel',
               onPress: () => {
                 if (role === 'dj') {
                   router.replace('/eventos-dj');

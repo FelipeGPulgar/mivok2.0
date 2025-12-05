@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -19,26 +19,60 @@ export default function PagarServiciosClienteScreen() {
     const [loading, setLoading] = useState(true);
     const [totalToPay, setTotalToPay] = useState(0);
 
-    useEffect(() => {
-        loadProposals();
-    }, []);
-
-    const loadProposals = async () => {
+    const loadProposals = useCallback(async () => {
         try {
+            console.log('🔄 Cargando propuestas para pagar...');
+            console.log('🕐 Timestamp:', new Date().toISOString());
+            setLoading(true);
+            
             const { data: { user } } = await supabase.auth.getUser();
-            if (!user) return;
+            if (!user) {
+                console.log('❌ No hay usuario autenticado');
+                return;
+            }
 
+            console.log('👤 Usuario ID para buscar propuestas:', user.id);
+            console.log('📞 Llamando getUnpaidAcceptedProposals...');
+            
             const data = await getUnpaidAcceptedProposals(user.id);
+            
+            console.log('📋 Resultado de getUnpaidAcceptedProposals:', {
+                cantidad: data.length,
+                propuestas: data.map(p => ({
+                    id: p.id.slice(0, 8),
+                    estado: p.estado,
+                    monto: p.monto,
+                    monto_con_comision: p.monto_con_comision,
+                    client_id: p.client_id,
+                    detalles: p.detalles
+                }))
+            });
+            
             setProposals(data);
 
-            const total = data.reduce((sum, p) => sum + p.monto, 0);
+            // Usar monto_con_comision si está disponible, sino usar monto
+            const total = data.reduce((sum, p) => sum + (p.monto_con_comision || p.monto), 0);
             setTotalToPay(total);
+            
+            console.log('💰 Total calculado:', total);
+            console.log('✅ Propuestas cargadas:', data.length, 'Total:', total);
         } catch (error) {
-            console.error('Error loading proposals:', error);
+            console.error('❌ Error en loadProposals:', error);
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    // Cargar propuestas cuando la pantalla gane focus (regrese de chat)
+    useFocusEffect(
+        useCallback(() => {
+            loadProposals();
+        }, [loadProposals])
+    );
+
+    useEffect(() => {
+        loadProposals();
+    }, [loadProposals]);
 
     const formatCLP = (amount: number) => {
         return amount.toLocaleString('es-CL', {
@@ -51,7 +85,7 @@ export default function PagarServiciosClienteScreen() {
         router.push({
             pathname: '/pago-kushki-mock',
             params: {
-                monto: proposal.monto,
+                monto: proposal.monto_con_comision || proposal.monto,
                 nombreEvento: proposal.detalles || 'Evento Mivok',
                 proposalId: proposal.id,
                 clientId: proposal.client_id,
@@ -97,7 +131,7 @@ export default function PagarServiciosClienteScreen() {
                     </Text>
                 </View>
                 <View style={styles.amountBadge}>
-                    <Text style={styles.amountText}>{formatCLP(item.monto)}</Text>
+                    <Text style={styles.amountText}>{formatCLP(item.monto_con_comision || item.monto)}</Text>
                 </View>
             </View>
 
