@@ -2,19 +2,19 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    Alert,
-    Dimensions,
-    FlatList,
-    Image,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Dimensions,
+  FlatList,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
@@ -23,7 +23,7 @@ import { formatCLP } from '../lib/formatters';
 import * as notificationManager from '../lib/notifications';
 import * as profileFunctions from '../lib/profile-functions';
 import { useRole } from '../lib/RoleContext';
-import { getCurrentUser, supabase } from '../lib/supabase';
+import { getCurrentUser } from '../lib/supabase';
 import * as supabaseFunctions from '../lib/supabase-functions';
 
 const { width } = Dimensions.get('window');
@@ -118,11 +118,11 @@ export default function ChatScreen() {
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { isDJ, currentMode } = useRole();
-  
+
   // Aceptar tanto userId como djId por compatibilidad
   const userId = params.userId as string || params.djId as string;
   const userName = params.userName as string || params.djName as string;
-  
+
   // Log inicial de parámetros y modo
   useEffect(() => {
     console.log('📋 Parámetros del chat:', { userId, userName, params });
@@ -132,13 +132,13 @@ export default function ChatScreen() {
   // Función para verificar qué propuestas ya fueron pagadas
   const checkPaidProposals = useCallback(async () => {
     if (!currentUser) return;
-    
+
     try {
-      const { data: payments } = await supabase
+      const { data: payments } = await supabaseFunctions.supabase
         .from('pagos')
         .select('proposal_id')
         .eq('client_id', currentUser.id);
-      
+
       if (payments) {
         const paidIds = new Set(payments.map(p => p.proposal_id));
         setPaidProposals(paidIds);
@@ -196,6 +196,28 @@ export default function ChatScreen() {
 
     const loadData = async () => {
       try {
+        // 🔒 VALIDAR QUE EL USUARIO EXISTE ANTES DE CARGAR EL CHAT
+        if (!userId) {
+          console.error('❌ No se proporcionó userId');
+          Alert.alert('Error', 'Usuario no válido', [
+            { text: 'OK', onPress: () => router.back() }
+          ]);
+          return;
+        }
+
+        console.log('🔍 Validando usuario antes de cargar chat:', userId);
+        const userExists = await chatFunctions.userExistsInAuth(userId);
+        if (!userExists) {
+          console.error('❌ El usuario no existe:', userId);
+          Alert.alert(
+            'Usuario no disponible',
+            'Este usuario no está disponible para chat en este momento.',
+            [{ text: 'OK', onPress: () => router.back() }]
+          );
+          return;
+        }
+        console.log('✅ Usuario validado, continuando con carga del chat');
+
         // 🔔 Configurar handler de notificaciones y registrarse para push notifications
         notificationManager.setupNotificationHandler();
 
@@ -211,14 +233,16 @@ export default function ChatScreen() {
           user = await getCurrentUser();
           setCurrentUser(user);
 
-          // 🔥 CARGAR DATOS DEL USUARIO ACTUAL CON FALLBACKS
+          // 🔥 CARGAR DATOS DEL USUARIO ACTUAL (nombre e imagen)
           if (user) {
-            const userData = await profileFunctions.loadUserDataWithFallbacks();
-            console.log('✅ Datos del usuario actual cargados con fallbacks:', userData.name);
-            setCurrentUserProfile({
-              name: userData.name,
-              image: userData.profileImage || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop',
-            });
+            const userProfile = await profileFunctions.getCurrentProfile();
+            if (userProfile) {
+              console.log('✅ Perfil del usuario actual cargado:', userProfile.first_name);
+              setCurrentUserProfile({
+                name: userProfile.first_name,
+                image: userProfile.foto_url || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop',
+              });
+            }
           }
         } catch (authError) {
           console.warn('⚠️ No se pudo obtener sesión de usuario:', authError);
@@ -561,11 +585,13 @@ export default function ChatScreen() {
   const handleSendMessage = useCallback(async () => {
     if (!inputText.trim() || !currentUser) return;
 
+    // Guardar el mensaje antes de limpiar el input
+    const messageToSend = inputText;
+
     try {
-      console.log('📤 Enviando mensaje...', inputText);
+      console.log('📤 Enviando mensaje...', messageToSend);
 
       // Limpiar input INMEDIATAMENTE para mejor UX
-      const messageToSend = inputText;
       setInputText('');
 
       // Enviar mensaje a Supabase usando chat-functions
@@ -583,7 +609,15 @@ export default function ChatScreen() {
       }
     } catch (error) {
       console.error('❌ Error al enviar mensaje:', error);
-      Alert.alert('Error', 'No se pudo enviar el mensaje');
+      // Restaurar el texto si falla
+      setInputText(messageToSend);
+
+      // Mostrar mensaje de error apropiado
+      const errorMessage = error instanceof Error
+        ? error.message
+        : 'No se pudo enviar el mensaje. Por favor intenta de nuevo.';
+
+      Alert.alert('Error', errorMessage);
     }
   }, [inputText, currentUser, userId]);
 
@@ -676,7 +710,7 @@ export default function ChatScreen() {
         currentMode: currentMode,
         userName: userName
       });
-      
+
       // Usar currentMode directamente para determinar roles
       const isModeoDJ = currentMode === 'dj';
       const clientId = isModeoDJ ? userId : currentUser.id;  // Si estoy en modo DJ, el cliente es userId; si soy cliente, soy yo
@@ -1207,7 +1241,7 @@ export default function ChatScreen() {
 
                 <ScrollView style={styles.modalBody}>
                   <Text style={styles.modalDescription}>
-                    {currentMode === 'dj' 
+                    {currentMode === 'dj'
                       ? 'Ingresa los detalles de tu propuesta para el cliente.'
                       : 'Ingresa los detalles de tu propuesta para que el DJ pueda evaluarla.'
                     }
@@ -1215,7 +1249,7 @@ export default function ChatScreen() {
 
                   <View style={styles.formGroup}>
                     <Text style={styles.formLabel}>
-                      {currentMode === 'dj' 
+                      {currentMode === 'dj'
                         ? 'Monto a cobrar al cliente (CLP)'
                         : 'Monto para el DJ (CLP)'
                       }
@@ -1385,7 +1419,7 @@ export default function ChatScreen() {
                     disabled={!monto || !horas}
                   >
                     <Text style={styles.submitButtonText}>
-                      {proposalStatus === 'approved' ? '✓ Aceptar' : proposalStatus === 'rejected' ? '✗ Rechazar' : proposalStatus === 'counter' ? '🔄 Contrapropuesta' : 
+                      {proposalStatus === 'approved' ? '✓ Aceptar' : proposalStatus === 'rejected' ? '✗ Rechazar' : proposalStatus === 'counter' ? '🔄 Contrapropuesta' :
                         currentMode === 'dj' ? 'Enviar propuesta al cliente' : 'Enviar propuesta'
                       }
                     </Text>

@@ -33,6 +33,35 @@ export interface Conversation {
 }
 
 // ============================================================================
+// VALIDACIÓN DE USUARIOS
+// ============================================================================
+
+/**
+ * Verificar si un usuario existe en user_profiles
+ * Esto previene errores de foreign key cuando se intenta enviar mensajes
+ */
+export const userExistsInAuth = async (userId: string): Promise<boolean> => {
+  try {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('id')
+      .eq('id', userId)
+      .single();
+
+    if (error || !data) {
+      console.error('❌ Usuario no encontrado en user_profiles:', userId);
+      return false;
+    }
+
+    console.log('✅ Usuario validado:', userId);
+    return true;
+  } catch (error) {
+    console.error('❌ Error verificando usuario:', error);
+    return false;
+  }
+};
+
+// ============================================================================
 // MENSAJES - CRUD
 // ============================================================================
 
@@ -47,6 +76,14 @@ export const sendMessage = async (
   metadata?: any
 ): Promise<ChatMessage | null> => {
   try {
+    // 🔒 Validar que el receptor existe antes de enviar
+    console.log('🔍 Validando receptor:', receiverId);
+    const receiverExists = await userExistsInAuth(receiverId);
+    if (!receiverExists) {
+      console.error('❌ El receptor no existe:', receiverId);
+      throw new Error('El usuario destinatario no existe o no está disponible');
+    }
+
     const { data, error } = await supabase
       .from('messages')
       .insert({
@@ -73,7 +110,8 @@ export const sendMessage = async (
     return data;
   } catch (error) {
     console.error('❌ Error en sendMessage:', error);
-    return null;
+    // Re-throw para que el caller pueda manejar el error con mensaje apropiado
+    throw error;
   }
 };
 
@@ -319,7 +357,7 @@ export const subscribeToConversation = (
 ): (() => void) => {
   try {
     console.log(`🔔 Suscribiendo a mensajes entre ${userId1} y ${userId2}`);
-    
+
     // Crear canal sin filtro - Realtime puede tener problemas con filtros complejos
     const channel = supabase
       .channel(`conversation_${userId1}_${userId2}`, {
@@ -344,13 +382,13 @@ export const subscribeToConversation = (
             nosotros: userId1,
             otro: userId2,
           });
-          
+
           // Filtrar manualmente para mensajes relevantes
           const esParaNosotros = (
             (msg.sender_id === userId1 && msg.receiver_id === userId2) ||
             (msg.sender_id === userId2 && msg.receiver_id === userId1)
           );
-          
+
           if (esParaNosotros) {
             console.log('✅ Mensaje relevante, llamando callback');
             callback(msg);
@@ -374,13 +412,13 @@ export const subscribeToConversation = (
             receiver: msg.receiver_id,
             proposal: msg.metadata?.proposal,
           });
-          
+
           // Filtrar manualmente para mensajes relevantes
           const esParaNosotros = (
             (msg.sender_id === userId1 && msg.receiver_id === userId2) ||
             (msg.sender_id === userId2 && msg.receiver_id === userId1)
           );
-          
+
           if (esParaNosotros) {
             console.log('✅ Actualización relevante, notificando');
             // Llamar al callback de actualización si existe
@@ -404,7 +442,7 @@ export const subscribeToConversation = (
     };
   } catch (error) {
     console.error('❌ Error en subscribeToConversation:', error);
-    return () => {};
+    return () => { };
   }
 };
 
@@ -438,7 +476,7 @@ export const subscribeToMessageUpdates = (
     };
   } catch (error) {
     console.error('❌ Error en subscribeToMessageUpdates:', error);
-    return () => {};
+    return () => { };
   }
 };
 
@@ -451,7 +489,7 @@ export const subscribeToAllMessages = (
 ): (() => void) => {
   try {
     console.log(`🔔 Iniciando suscripción a mensajes para userId: ${userId}`);
-    
+
     // 🔥 Crear dos suscripciones: una para mensajes recibidos y otra para enviados
     const channelReceived = supabase
       .channel(`messages_received_${userId}_${Date.now()}`)
@@ -499,7 +537,7 @@ export const subscribeToAllMessages = (
     };
   } catch (error) {
     console.error('❌ Error en subscribeToAllMessages:', error);
-    return () => {};
+    return () => { };
   }
 };
 
@@ -522,12 +560,12 @@ export const respondToProposal = async (
   originalProposalMessageId: string
 ): Promise<ChatMessage | null> => {
   try {
-    const responseText = 
-      proposalResponse.estado === 'aceptada' 
+    const responseText =
+      proposalResponse.estado === 'aceptada'
         ? '✅ Propuesta aceptada'
         : proposalResponse.estado === 'rechazada'
-        ? '❌ Propuesta rechazada'
-        : '💬 Contrapropuesta enviada';
+          ? '❌ Propuesta rechazada'
+          : '💬 Contrapropuesta enviada';
 
     // 1️⃣ ACTUALIZAR EL MENSAJE ORIGINAL CON EL NUEVO ESTADO
     // Primero obtener el mensaje original para preservar su metadata
@@ -589,11 +627,11 @@ export const respondToProposal = async (
     // 2.5️⃣ ACTUALIZAR ESTADO EN LA TABLA PROPOSALS (CRÍTICO)
     if (originalMessage) {
       const dbProposalId = originalMessage.metadata?.proposal?.id || originalProposalMessageId;
-      
+
       try {
         const { error: updateProposalError } = await supabase
           .from('proposals')
-          .update({ 
+          .update({
             estado: proposalResponse.estado,
             aceptada_at: proposalResponse.estado === 'aceptada' ? new Date().toISOString() : null
           })
@@ -701,7 +739,7 @@ export const respondToProposal = async (
               } catch (metaErr) {
                 console.warn('⚠️ No se pudo marcar metadata de mensaje como missing_location:', metaErr);
               }
-              } else {
+            } else {
               await createEvent({
                 proposal_id: dbProposalId as unknown as string,
                 client_id: client_id as string,
